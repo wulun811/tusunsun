@@ -58,6 +58,10 @@ jobs:
           npm init -y > /dev/null
           npm install "$GITHUB_WORKSPACE"/tusunsun-*.tgz --no-audit --no-fund
           node node_modules/tusunsun/tusunsun.mjs --version
+      - name: Run the packaged test suite (artifact form)
+        run: |
+          cd "$RUNNER_TEMP/clean/node_modules/tusunsun"
+          npm test
 
   windows-release:
     name: windows (node ${{ matrix.node-version }} / gates + install acceptance)

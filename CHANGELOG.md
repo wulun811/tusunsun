@@ -35,9 +35,11 @@
 
 | 形态 | 单测 | 集成 | 冒烟 | 说明 |
 |---|---|---|---|---|
-| **开发树**（发布前） | 1509 总 / 1509 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 | 发布前开发树实测，作为对照 |
-| **公开树**（三平台 CI） | 待回填 | 待回填 | 待回填 | ubuntu / windows / macos 三平台，结果以 Actions 为准 |
-| **npm 制品**（净室） | 1508 注册 / 待回填 | 待回填 | 2/2 | 公开树基线；全量结果由 Ubuntu CI 净室运行回填，SKIP 不折算为通过 |
+| **开发树**（快照前） | 1509 总 / 1509 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 | 公开树取自该树快照；两边清理不同，数字不互相顶替 |
+| **公开树** ubuntu-latest / Node 22 | 1505 总 / 1505 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 | 2026-10-31 Actions 实测 |
+| **公开树** macos-latest / Node 22 | 1505 总 / 1500 通过 / 0 失败 / 5 跳过 | 63/63 | 2/2 | 5 条 SKIP 为 `/proc` 依赖（进程组回收、僵尸判活），不折算通过 |
+| **公开树** windows-latest / Node 22 | 不跑全量（含 POSIX-only 用例） | — | 2/2 | gates + windows-release 2/2 + install-acceptance 12/12 |
+| **npm 制品**（净室） | 1505 注册 / 待回填 | 待回填 | 待回填 | 制品形态全量由 Ubuntu CI `package` 作业运行回填；SKIP 不折算为通过 |
 
 **计数口径**：单测按 `test/unit/*.test.mjs` 注册的用例数计；集成按 `test/integration/*.test.mjs`
 注册的用例数计；冒烟按套件用例计。公开树清理了内部套件，单测基线从 1509 下调到 1508
@@ -50,7 +52,7 @@
 
 - `npm run check`：核心行预算 4889/4889、字节 260153/260189、核心指纹、注释门禁与 vendor 逐文件哈希。
 - `npm test`：smoke + unit + integration；三平台 CI 结果分别记录。
-- `npm pack`：净室安装后 `node tusunsun.mjs --version` 可运行；包内不含 `dist/`、`test-results/`、`*.tgz`。
+- `npm pack`：净室安装后 `node tusunsun.mjs --version` 可运行；同一作业再在制品目录内跑一次 `npm test`，作为制品形态的独立证据；包内不含 `dist/`、`test-results/`、`*.tgz`。
 - 零运行时 npm 依赖：`ws` 内置在 `vendor/ws/`，`@jieai/liuhe-lite` 是可选器官，默认不装配。
 
 ### 5. 未做 / NOT_RUN
