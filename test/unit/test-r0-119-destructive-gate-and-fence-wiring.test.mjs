@@ -27,6 +27,8 @@ async function makeExecutor({ workDir }) {
   if (workDir) core.setData('agent.workDir', workDir);
   // `core.get()` 走 config 服务；这里只放一个最小 stub，用它控制 permissionMode 等开关
   const cfg = new Map();
+  // 边界判据的默认根只有 cwd/tmp；macOS 的临时目录不在 /tmp 下，测试必须显式声明工作区。
+  if (workDir) cfg.set('kunxiansuo.local.fsguard', { safeRoots: [workDir] });
   core.registerService('config', {
     get: (k, fb) => (cfg.has(k) ? cfg.get(k) : fb),
     set: (k, v) => { cfg.set(k, v); return true; },
