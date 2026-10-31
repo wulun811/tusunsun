@@ -248,7 +248,11 @@ export async function setup(runner) {
     await ctx.browser.evaluate(ctx.session, sendExpr(text));
     // 关键：先确认"发送被受理"。少了这一步，失败会以"等待渲染超时"的面貌出现，
     // 让人误以为是渲染问题（实测踩过）。
-    await ctx.browser.waitFor(ctx.session, 'loading === true', { what: '发送被受理', timeoutMs: 15000 });
+    // 不能只等 `loading === true`：mock 模型可能在下一次 CDP 求值前就结束，
+    // loading 已落回 false；新增消息节点同样是"受理"的证据。
+    await ctx.browser.waitFor(ctx.session,
+      `loading === true || document.getElementById('messages').children.length > ${offset}`,
+      { what: '发送被受理', timeoutMs: 15000 });
     await ctx.browser.waitFor(ctx.session, readyExpr, { what, timeoutMs: 40000 });
     await idle();
     // 给"假如有脚本要执行"留出执行窗口 —— "没执行"必须在**等待之后**仍然成立。
