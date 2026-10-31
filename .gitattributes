@@ -1,0 +1,4 @@
+# Normalize text to LF on every platform: the core byte budget counts UTF-8 bytes,
+# and vendored bytes are pinned by PROVENANCE.json.
+* text=auto eol=lf
+vendor/** text eol=lf

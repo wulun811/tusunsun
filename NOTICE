@@ -1,0 +1,38 @@
+tusunsun
+Copyright 2024-2026 Tusunsun Contributors
+
+This product includes software developed by the Tusunsun Contributors.
+
+---
+
+Third-Party Dependencies
+
+ws (https://github.com/websockets/ws)
+  Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
+  Licensed under the MIT License.
+  Vendored verbatim at vendor/ws/ (version recorded in vendor/ws/PROVENANCE.json);
+  the MIT license text is included as vendor/ws/LICENSE.
+  This product is not a fork: the files are unmodified copies, verified file-by-file
+  by sha256 (scripts/verify-vendor.mjs).
+
+@jieai/liuhe-lite (https://github.com/wulun811/LiuHe)
+  Copyright (c) 2026 Malong contributors
+  Licensed under the MIT License.
+  Vendored at vendor/liuhe-lite/ (version and per-file sha256 in that directory's
+  PROVENANCE.json); the MIT license text is included as vendor/liuhe-lite/LICENSE.
+  The bundled malong subtree is Copyright (c) 2026 Malong contributors and is
+  included under the same MIT license.
+  One file carries a recorded local code patch (lite/index.js: keep a leading UTF-8 BOM
+  when decoding); upstream and local sha256 are both recorded in PROVENANCE.json,
+  and scripts/verify-vendor.mjs checks that the record matches the bytes. One provenance
+  note in vendor/liuhe-lite/CHANGELOG.md was reworded to point at the public upstream;
+  it does not change code.
+  It is an optional organ: no built-in scene loads it (only scenes/file-txn.json5 does).
+
+---
+
+Trademarks
+
+The name "土行孙" (Tusunsun) and associated logos are trademarks of the Tusunsun project.
+The Apache License 2.0 does not grant permission to use these trade names, except as
+required for reasonable and customary use in describing the origin of the Work.

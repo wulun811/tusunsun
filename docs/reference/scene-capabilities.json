@@ -1,0 +1,48 @@
+{
+  "//": "场景声称的能力面 —— 机器可读版（v0.9.33，E3）。",
+  "//why": "这些声明原本写在 scenes/*.json5 的 `schema` 键里，但装配器从不读那个键（零读者）。零读者配置比没有更糟：读者会以为能力面已被内核校验。所以拆成两处：人读的说明在 docs/guides/scene-system.md，机器判读的在本文件。判据 R0-103/T6b 读这里，并与真实装配逐条比对。",
+  "//contract": "本文件是**声称**，不是事实。事实由 test/unit/test-r0-103-open-source-review-fixes.test.mjs 的 T6b 用真实 Core 装配后核对。",
+  "schema_version": "tusunsun.scene-capabilities/v0",
+  "scenes": {
+    "base-system": {
+      "capabilities": ["配置管理", "网关服务", "场景切换"],
+      "note": "底座，不做业务"
+    },
+    "gateway-lite": {
+      "capabilities": ["模型调用"],
+      "note": "不含工具执行。eager 只有 4 个插件，tool-executor 与 tools 都不在，tool.* 能力数为 0；任何工具调用会落到 `Tool \"x\" not found (no tool-executor or legacy tools)`"
+    },
+    "chat": {
+      "capabilities": ["模型调用"],
+      "note": "纯对话，无工具"
+    },
+    "gateway": {
+      "capabilities": ["模型调用", "工具执行", "会话持久化", "场景切换"],
+      "note": "不含长期记忆/监控；本包 10 个文件工具"
+    },
+    "coding": {
+      "capabilities": ["模型调用", "工具执行", "会话持久化", "场景切换"],
+      "note": "同 gateway，另加编码工具集"
+    },
+    "agent-platform": {
+      "capabilities": ["模型调用", "会话"],
+      "note": "扩展装配起点；tool-* 与 kunxiansuo-local 仅在 optional 列出（惰性、不装配）。名称不代表开源包提供持久任务编排交付平面"
+    },
+    "iot": {
+      "capabilities": ["模型调用", "设备控制"],
+      "note": "设备控制依赖包外组件，本包内不含"
+    },
+    "cell": {
+      "capabilities": ["模型调用", "工具执行", "单 Cell 生命周期", "任务准入与验收"],
+      "note": "在 gateway 之上增加 cell-runtime（1 Cell : 1 Core : 1 进程）"
+    },
+    "san-cai": {
+      "capabilities": ["三才相关装配配方"],
+      "note": "以 scene show san-cai 与实际可解析组件为准，不承诺包外 full 功能"
+    },
+    "file-txn": {
+      "capabilities": ["工具执行", "受控多文件事务", "单 Cell 生命周期"],
+      "note": "E4 配方：eager 装 liuhe-lite + cell-runtime，器官 cell-file-txn 在**懒加载池**（首次能力调用才装）。**不声明“模型调用”**：本配方不装 model-openai/session，任务由宿主的确定性 chat.handle 驱动。事务是逐文件提交，不承诺跨文件原子性；undo 是**条件**撤销"
+    }
+  }
+}

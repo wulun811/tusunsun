@@ -1,0 +1,41 @@
+{
+  "schema_version": "tusunsun-vendor/v1",
+  "package": "ws",
+  "version": "8.20.0",
+  "license": "MIT",
+  "upstream": {
+    "repository": "https://github.com/websockets/ws",
+    "tarball": "https://registry.npmmirror.com/ws/-/ws-8.20.0.tgz",
+    "integrity": "sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA=="
+  },
+  "vendored_at": "vendor/ws",
+  "modified": false,
+  "note": "逐文件 sha256 来自 npm 发布物原样复制（未改动）。校验：node scripts/verify-vendor.mjs",
+  "omitted": [
+    {
+      "path": "README.md",
+      "bytes": 15306,
+      "reason": "上游项目文档，非运行所需；上游地址见 upstream.repository（省 15 KB 安装体积）"
+    }
+  ],
+  "files": {
+    "LICENSE": "sha256:2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef",
+    "browser.js": "sha256:010da44addea1d88b2b732540c3f1fd0cbcb28926b96623d4c64222e0ead2d0e",
+    "index.js": "sha256:924564d5be26d59b9682c4263f68320e48dde7240bd2d1ad17ec305537429dd2",
+    "lib/buffer-util.js": "sha256:8b0a45739132f82e25ea13163780abf547ccfe989267f3eb7abb475beec92da3",
+    "lib/constants.js": "sha256:391e823142b8b370e55a2fd32b022deaf03b8415c56000009674ebc86a0b4f86",
+    "lib/event-target.js": "sha256:c45d3c6e12d170c860c0c3f1a050aa0f864d9806632b609a1e607d675aba128c",
+    "lib/extension.js": "sha256:852564f0f6b460287043803eae732666fb5610f676874354fc89f06aa4e986ed",
+    "lib/limiter.js": "sha256:e0469d4b83f6ba764b15f80e1766b75c136fbff68f048f4c050f0b1c7f065f69",
+    "lib/permessage-deflate.js": "sha256:02c31796f0132a335d4efe7b7adcebadbb69543a1ce65ae04aaccc3530e27ab9",
+    "lib/receiver.js": "sha256:7b9f6afc1fffb5c98d768d7d3d6fc1b709f28b45c6ae2682ff255075394323d9",
+    "lib/sender.js": "sha256:a80e8688dde53d46d836a58c9d15121ee12e978b7b0f656ed818c63d20df5f94",
+    "lib/stream.js": "sha256:a56fcb6e2b152097ee820b6f5410b1f71e59819b45d08d9f8bda588fe39070ec",
+    "lib/subprotocol.js": "sha256:be3f6323d6f549568577dcba9004c1479d95c65a7abb0fe0c582875b9fac0b7c",
+    "lib/validation.js": "sha256:41ce8e83d0d434132e1704895fedb91f6703a701b42d91c80954ab29b2845593",
+    "lib/websocket-server.js": "sha256:88139775699dbc17474a074cc92f6682cb5968022db6ec856e6e46a5dc341c61",
+    "lib/websocket.js": "sha256:e2308419b4f64007a79095e4eda12ee5db6ddcea7ca89dfc301666ad686e1874",
+    "package.json": "sha256:0e8b0104fec3e3b96704861c6ef3ad77c27add2cc016e49e111291b16b677f89",
+    "wrapper.mjs": "sha256:fe154662301fd558f935f9c217fccbe7a7dac02ff39e648a000589403ff27c7f"
+  }
+}

@@ -1,0 +1,12 @@
+# 供应链 pin —— TLC 工具链。换版本必须同时改本文件的 hash、URL 与版本行，
+# 并在 verification/reports/model-check.json 里留下新的 toolchain 记录。
+#
+#   artifact        tla2tools.jar
+#   url             https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar
+#   internal        TLC2 Version 2026.10.24.013619 (rev: 2ef2af8)
+#   java_tested     openjdk 21.0.12.1 2026-08-18
+#   size_bytes      4502259
+#   fetched_at      2026-10-25
+#
+# 不要用 latest：latest 不是版本，是一个会变的指针。
+d15655eeaff4b3f7b3d65c46b838bc0f35d131b2ef4b1e473689b62c98d4726f  tla2tools.jar

@@ -1,0 +1,33 @@
+// 受控文件事务场景（v0.16.0-rc，E4）—— 真实复杂器官的**装配配方**，不是演示壳。
+//
+// 为什么单开一个场景，而不是把这个器官塞进 gateway/coding：
+//   · 它把**六合 Lite 拉成 eager**（`vendor/liuhe-lite/`，43 文件）。那是本包唯一随附的第三方代码，
+//     “零 npm 依赖”与“零第三方代码”是两件事（ADR-07 §2）。默认装进 gateway，
+//     等于让所有既有部署多跑一份第三方事务引擎，而它们既没 Cell 也不会调它。
+//   · `cell-file-txn` 自己要 Cell 授权（txn.commit）才有意义；没有 `cell-runtime` 的装配里，
+//     它只能当只读能力用。
+//
+// 装配顺序为什么能对上（R3-00）：`workspace` 必须先于 `liuhe-lite`，而它们不在同一个
+// 依赖边里 —— `liuhe-lite.requires = { workspace }` 把两者连上了。修 R3-00 之前，
+// `tool-executor.requires` 里的 `tool-registry`（服务名）被当成插件名查，DAG 直接失败并回退
+// 目录顺序，`liuhe-lite` 就排在 `workspace` 前面、init 必然报 “workspace service required”。
+// 也就是说：这份配方在修 R3-00 之前**根本跑不起来**。
+{
+  name: "file-txn",
+  description: "受控多文件事务 — 六合 Lite 锚/日记 + Cell 授权 + 事务回执",
+  include: ["base-system"],
+  eager: [
+    "tool-loader",
+    "tool-guard",
+    "tool-executor",
+    // R0-119/T7：装配了 tool-executor 的场景必须同时带捆仙索护栏 ——
+    // “LLM 能删能改的地方就有护栏”，不能因为本场景只打算用来跑事务就豁免。
+    "kunxiansuo-local",
+    "liuhe-lite",
+    "cell-runtime",
+  ],
+  // 器官本体进**懒加载池**：启动时不导入模块，首次能力调用才装。
+  // 证据见 `test/probes/r3-e4-complex-organ.mjs` 的 E4-L1（触发前 core.plugins 里没有它）。
+  lazy: ["cell-file-txn"],
+  plugins: [],
+}

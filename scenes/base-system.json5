@@ -1,0 +1,13 @@
+// 所有场景的基础能力包
+{
+  name: "base-system",
+  description: "所有场景必须加载的基底能力",
+  // v0.9.33（E3）：删除了零读者的 `schema` 块。它写着 capabilities/useCases/template，
+  // 但 `src/` 与 `plugins/` 里**没有任何读者**（grep 实证）。零读者配置比没有更糟：
+  // 读者会以为"这个场景已经声明了能力面"，而真正生效的是 Cell 能力门与 tool-guard。
+  // 元数据若要保留，应写成随包文档（docs/），而不是一个不会被读的 JSON 键。
+  // R0-124：`workspace` 紧随 `config`（它读 `agent.workDir` 当默认根），且必须放在**基底**
+  // 而不是某个场景：任何带文件工具的装配都要能回答"这个会话的相对路径从哪儿算起"。
+  eager: ["admission-gate", "config", "workspace", "gateway", "privacy", "assembly-lock", "event-sink", "runtime-env", "readiness"],
+  plugins: [],
+}

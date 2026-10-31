@@ -1,0 +1,34 @@
+model,model_action,contract,implementation_site,status,note
+Lifecycle,Enter,F04,LifecycleManager.runExclusive（prev 已 resolve 的直接进入）,MAPPED,重放 F04-REPLAY-01
+Lifecycle,Enqueue,F04,runExclusive 里的 this._queues.set(key tail),PARTIALLY_MAPPED,实现是 Promise 链而非显式队列：顺序等价，但队列长度不可直接观测
+Lifecycle,EnterFromQueue,F04,runExclusive 中 await prev 之后 lease.active = true,MAPPED,重放 F04-REPLAY-01
+Lifecycle,LockWaitTimeout,F04,runExclusive catch 分支的 abandon(true) + _waitBounded 抛 lock_timeout,MAPPED,重放 F04-REPLAY-01 / F03-REPLAY-01
+Lifecycle,Exit,F04,runExclusive finally 的 abandon(false) 与 _queues.delete,MAPPED,重放 F04-REPLAY-01 的 key_recovered_after_holder_exit
+Lifecycle,BeginAssembly,F05,Core.beginAssembly（rec.epoch = Core._epoch）,MAPPED,重放 F05-REPLAY-01
+Lifecycle,CommitAssembly,F05,Core.registerCapability 的 isAssemblyCurrent(asm.epoch) 闸门与 LifecycleManager._load 的复核,MAPPED,重放 F05-REPLAY-01（两道闸门同时命中）与 F05-REPLAY-02（服务侧：内层公开入口不得把 epoch 抹成 null）
+Lifecycle,BeginStop,F08,Core.stop 的原子点：_stopping/_stopped/_epoch += 1,MAPPED,重放 F08-REPLAY-01
+Lifecycle,StopHandler,F08,plugin.stop() 正常返回后置 stopped,MAPPED,重放 F08-REPLAY-01
+Lifecycle,StopDeadline,F08,LifecycleManager._holdBounded 的 HOLD_TIMEOUT 竞速与 Core._stopFailure 的 phase=stop_return,MAPPED,重放 F08-REPLAY-01 / F08-REPLAY-02
+Lifecycle,Quiesce,F08,Core._stopped = true 之后不再接受装配与登记（_assertRegistrationOpen）,MAPPED,重放 F05-REPLAY-01 的反面：换代后登记被拒
+Ownership,MintRegister,F01,Core.registerCapability 的成功路径（铸 registrationId + 冻结凭据）,MAPPED,ID-01/ID-04；凭据只在该次登记的返回值得手
+Ownership,OverrideWithHandle,F01,Core.registerCapability 遇到同名时的 overrideBy 判据,MAPPED,ID-03/ID-08；只认原登记凭据，不认 owner/provider 字符串
+Ownership,ReleaseByHandle,F01,Core.releaseRegistration（compare-and-delete(registrationId)）,MAPPED,ID-04/ID-07/ID-08/ID-15
+Ownership,ReleaseByString,F01,Core.releaseCapability(id, credential) 具名拒绝 capability_release_denied,MAPPED,ID-02；签名保留只为给具名拒绝
+Ownership,ReapInstance,F01,Core.issueLifecycleReaper → _reapRegistrations(pluginName, instance),MAPPED,ID-13；按登记实例身份清场
+Ownership,LateStopOfOldInstance,F01,LifecycleManager._step6RemoveRegistrations（迟到 stop 与重载后同名）,PARTIALLY_MAPPED,ID-09/ID-10；模型只判"删的是不是同一笔"，不判卸载与 reload 的时序窗口
+Ownership,Quiesce,F01,无对应动作：模型里表示"没有别的事可做"的收敛点,NOT_MAPPED,不计入实现证明
+HostControl,Commit,F05,Core._commitService（isHost 由 HOST_CONTROLS.get(this) === hostCtl 判定）,MAPPED,H01–H04/H06b；四类假冒 claimant 全部被具名拒绝
+HostControl,Release,F05,LifecycleManager._step6RemoveRegistrations → Core._reapRegistrations（插件卸载/迟到清场，按登记实例身份）,MAPPED,H11；@host 条目不被 owner 清场带走
+HostControl,HostRelease,F05,Core._releaseHostService（宿主按登记身份撤销，只有它能拆 @host 条目）,MAPPED,H12 正例侧；旧登记 ID 打回 stale_registration
+HostControl,Quiesce,F05,无对应动作：模型里表示“没有别的事可做”的收敛点,NOT_MAPPED,不计入实现证明
+Dependency,Plan,F06,Core._stopOrder → computeStopOrder（basis / missing → stopOrderUnresolved / cycles → stopOrderCycles）,MAPPED,F06-REPLAY/1-/4；`basis` 与三条诊断同形进 core.stopped
+Dependency,StopOk,F06,Core._stopOnePlugin（runExclusive 里 await plugin.stop() 后 advance 'stopped'）,MAPPED,R0-032/2；released 与 state='stopped' 同一件事
+Dependency,StopStuck,F06,Core._stopOnePlugin 的 hold_timeout 分支 → _stopFailure 记 stop_return / unknown，**不释放任何东西**,MAPPED,R0-032/1；F08 与 F06 的分界：调用方有界 ≠ 插件已停
+Dependency,ReportCycle,F06,Core._stopOrder 的 stopOrderCycles（computeStopOrder 查出环并具名交出）,MAPPED,F06-REPLAY/4；环必须先报再出顺序
+Dependency,Quiesce,F06,无对应动作：模型里表示"没有别的事可做"的收敛点,NOT_MAPPED,不计入实现证明
+ServiceRegistration,Fail,F01,LifecycleManager._load 的 catch（init/start 抛出后进入失败清理）,MAPPED,R16-01a；失败与清理是两个独立步骤 —— 交错就发生在这中间
+ServiceRegistration,Register,F01,Core._commitService（装配上下文 ctx0.serviceNames 记收据 {name, registrationId, instance}）,MAPPED,R16-01a/h；登记 ID 只由 _svcSeq 自增产生
+ServiceRegistration,HostTakeover,F05,Core._commitService 的 host_takeover 分支（写 _serviceTakeovers 回执，ID 与对象同一段提交）,MAPPED,R16-01a；接管产生新登记 ID 与新回执
+ServiceRegistration,Cleanup,F01,Core.discardAssemblyArtifacts → Core._discardServiceReceipt（比登记 ID，stale 则一动不动）,MAPPED,R16-01b/c/g/j；R16-02 的四条用例
+ServiceRegistration,HostRelease,F05,Core._releaseHostService → 同一个 Core._discardServiceReceipt,NOT_MAPPED,授权（宿主控制体）不在模型里；只比 ID 那一段由 R16-01d/e/f 重放
+ServiceRegistration,Quiesce,F01,无对应动作：模型里表示"没有别的事可做"的收敛点,NOT_MAPPED,不计入实现证明

@@ -1,0 +1,15 @@
+{
+  name: "gateway-lite",
+  description: "轻量 AI 网关 — 纯模型代理，无工具执行",
+  // v0.9.33（E3）：删除零读者 `schema`，能力面见 docs/guides/scene-system.md。
+  // 其中"工具执行是假的"那条自查结论已原文保留在文档的该场景行里 —— 它比配置本身有价值。
+  include: ["base-system"],
+  // R0-103（开源盘点 #1）：这四个是场景**启动即可用**的必需件，必须在 eager。
+  // 理由：`session`/`model`/`health.monitor` 都是**服务型** provides，而 getService 是同步 API
+  // （不可能按需触发懒加载）；`haotian-lite` 提供 chat.handle，网关的 WS 路径在派发前会检查
+  // 该能力是否存在，懒加载来不及。原先把它们放在 `plugins`（=懒加载池）里 ⇒ 场景声明"纯模型
+  // 代理"，实际启动后既没有模型也没有会话（实测：/v1/chat/completions 挂死无响应）。
+  eager: ["haotian-lite", "model-openai", "session", "health"],
+  // tui 不是插件（无 name/init），它是 CLI 命令提供者（`tusunsun tui`）——不得列在插件清单里。
+  plugins: [],
+}

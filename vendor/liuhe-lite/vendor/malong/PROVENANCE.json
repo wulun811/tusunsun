@@ -1,0 +1,119 @@
+{
+  "schema": "liuhe-lite/vendor-provenance/v1",
+  "package": "@jieai/liuhe-lite@0.1.3",
+  "source_repository": "https://github.com/wulun811/LiuHe",
+  "source_repository_public": "https://github.com/wulun811/LiuHe",
+  "source_repository_note": "公开上游项目：https://github.com/wulun811/LiuHe。包装层精确提交不在公共分支；本清单以 files[] 的逐文件 sha256 固定随包字节。",
+  "snapshot": {
+    "commit": null,
+    "commit_date": null,
+    "basis": "随包快照；逐文件 sha256 见 files[]",
+    "note": "顶层 commit 不冒充公共提交；审计以 files[] 的 sha256 为准。"
+  },
+  "source_path": "malong/",
+  "source_scope": "仅 vendor/malong/ 下的写路径原语；Lite 自身代码不在本清单范围",
+  "source_dirty": false,
+  "license": "MIT（随包 LICENSE；与源仓库一致）",
+  "integrity": {
+    "algorithm": "sha256",
+    "how_to_verify": "node tests/provenance.mjs（逐文件核对本清单 sha256，任何一个不符即失败）"
+  },
+  "files": [
+    {
+      "path": "error-codes.js",
+      "bytes": 8871,
+      "sha256": "a7a4c06087afa6def7392112247bfd8d2aa8289a24b7f25a3e7d982a4256d918",
+      "last_commit": "ad138a663a0fd815a65e6f89a0ada2f415bcdced"
+    },
+    {
+      "path": "git-exclude.js",
+      "bytes": 2115,
+      "sha256": "624844e4bab33fa1d216cdce4ae6c082a08d5290a32632889f9d06328f310b45",
+      "last_commit": "089b1f65f9d770a13c7b9fba7ce66e4f527c771c"
+    },
+    {
+      "path": "hash-utils.js",
+      "bytes": 589,
+      "sha256": "eabb2790f3c1108c843063bb8db3bdb711c3496ad16c7c32eafd491765a7168b",
+      "last_commit": "df8ff6e60118cc78a961e32d9d8411eaefd3f620"
+    },
+    {
+      "path": "host-config.js",
+      "bytes": 8348,
+      "sha256": "2a9bb3e7c38af5a9266b8233e1581ae820f317abf69f2d506866ca20b6aeddb9",
+      "last_commit": "df34e490de8a19d984775cbb275fdb7dc73853c3"
+    },
+    {
+      "path": "path-guard.js",
+      "bytes": 5634,
+      "sha256": "a3a46bd99a8379445a48d6fe9552f819bffa2738a5d90bb5daa6f4f76dacc00a",
+      "last_commit": "245a8177a167446838b190e0c6f7e49e2a83ef87"
+    },
+    {
+      "path": "staleness.js",
+      "bytes": 2623,
+      "sha256": "dd8a561edd0070551beccb900fc905c3aacea100c2c5a0d1c89c4dbfb9abc7e3",
+      "last_commit": "049d53371c8b4e2b2b2bf05533820fcd2bb6a829"
+    },
+    {
+      "path": "state-migrate-cli.js",
+      "bytes": 773,
+      "sha256": "7a8f09503778bf97f873963f600827761b1c0a6ef540679c03bed6b52b2dd125",
+      "last_commit": "30f1449f11ed5c6004048e8a29d9fdcae1f9496c"
+    },
+    {
+      "path": "state-migrate.js",
+      "bytes": 7275,
+      "sha256": "0449f51bcee27b46be20e8e440092e7cadcc408d1f9d2bd94a7c39a0321a6ee9",
+      "last_commit": "0539095e76dde21d00a926118e5b9eea633addbd"
+    },
+    {
+      "path": "symbol-anchors.js",
+      "bytes": 4496,
+      "sha256": "f475219d3f24da1abc40af6432a01f0a45d1b5bb5946b4f11f576127fb878a10",
+      "last_commit": "fdc991cea692164f189302f3b7a55218927a2855"
+    },
+    {
+      "path": "tools/entry-store.js",
+      "bytes": 12528,
+      "sha256": "8f6b3ca025e8824c717b53ff181888e896664108ec8832904f0701bdc57c7582",
+      "last_commit": "7769dc137b76f16beda3b5e7830ec9e56fc0946d"
+    },
+    {
+      "path": "tools/outlet-ledger.js",
+      "bytes": 13378,
+      "sha256": "86260a206382a2d2b2c96a82a1cba6e8dba1475d0749b6d743576f8102e178c6",
+      "last_commit": "a3106ba07c212903705301eb5f9c3188f0eea5df"
+    },
+    {
+      "path": "windows-file-replace.js",
+      "bytes": 2436,
+      "sha256": "d5f326954ed199e164413ffbebc345bcf9437a381cb29b73e0f891a8ef27dd4c",
+      "last_commit": "e7db1d0ad38e3b8895b1621873378cf11279a60c"
+    },
+    {
+      "path": "write-edit.js",
+      "bytes": 6870,
+      "sha256": "3d4eb4c90a0fe5c80623d767213bae0250745b8aa7889574de4079698b720a1c",
+      "last_commit": "d96f12ae38a483c04540af22c31ecdd147dea60c"
+    },
+    {
+      "path": "write-journal.js",
+      "bytes": 44980,
+      "sha256": "be88aff312000698cbdbcf98dead7ff7c6e5925cca91b396f394fef837b7ede8",
+      "last_commit": "245a8177a167446838b190e0c6f7e49e2a83ef87"
+    },
+    {
+      "path": "write-runtime.js",
+      "bytes": 76900,
+      "sha256": "c162b5d46253cf334ab6e374677f35d6c21b59f43ed79abe772fa028635f9832",
+      "last_commit": "3f80ca9277281f112efc60433c27d6569839799a"
+    },
+    {
+      "path": "writer-registry.js",
+      "bytes": 2065,
+      "sha256": "b1740df9981bab04e64e5970572b03ada235de69e8b35f1f43f074acee901537",
+      "last_commit": "8354bd2d98f75d66406edab9b85add1e9e782ed3"
+    }
+  ]
+}

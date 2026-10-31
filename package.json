@@ -1,0 +1,73 @@
+{
+  "name": "tusunsun",
+  "version": "0.20.0",
+  "description": "土行孙 — 超轻量、插件化 AI Agent 平台微内核，核心 ≤ 4889 行",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "tusunsun": "./tusunsun.mjs"
+  },
+  "files": [
+    "src/",
+    "plugins/",
+    "scripts/",
+    "scenes/",
+    "vendor/",
+    "tusunsun.mjs",
+    "LICENSE",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "examples/",
+    "test/*.mjs",
+    "test/*.json",
+    "test/unit/",
+    "test/integration/",
+    "test/lib/",
+    "test/probes/",
+    "test/fixtures/",
+    "docs/",
+    "contracts/",
+    "NOTICE",
+    "CODE_OF_CONDUCT.md"
+  ],
+  "author": "Tusunsun Contributors",
+  "homepage": "https://github.com/wulun811/tusunsun#readme",
+  "bugs": {
+    "url": "https://github.com/wulun811/tusunsun/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wulun811/tusunsun.git"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "plugin",
+    "microkernel",
+    "lightweight"
+  ],
+  "scripts": {
+    "start": "node --max-semi-space-size=2 --expose-gc tusunsun.mjs start",
+    "start:production": "node scripts/start-production.mjs",
+    "check": "node scripts/line-check.js && node scripts/core-manifest.js && node scripts/comment-audit.mjs --gate && node scripts/test-runner-guard.mjs && node scripts/verify-vendor.mjs",
+    "check:comments": "node scripts/comment-audit.mjs --gate",
+    "check:vendor": "node scripts/verify-vendor.mjs",
+    "check:deps": "node scripts/core-dep-check.mjs",
+    "prepublishOnly": "npm run check",
+    "release:gate": "node scripts/release-gate.mjs",
+    "chat": "node tusunsun.mjs chat",
+    "test": "node test/run-all.mjs",
+    "test:smoke": "node test/run-smoke.mjs",
+    "test:unit": "node test/run-unit.mjs",
+    "test:integration": "node test/run-integration.mjs",
+    "test:stress": "node test/run-stress.mjs",
+    "test:quick": "node test/run-all.mjs --quick",
+    "scene:inspect": "node scripts/scene-inspect.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

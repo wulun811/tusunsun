@@ -1,0 +1,611 @@
+{
+  "note": "plugins/ 的注释棘轮基线（js/cjs/mjs）：历史标记与整行注释每文件只降不升；文件集合必须与磁盘完全一致（新文件需显式 --allow-raise 登记，删文件后必须重写基线）。降低用 --write-baseline；升高必须在 raises 里留下记录并被 review 看见。",
+  "files": {
+    "plugins/_lib/action-receipt.mjs": {
+      "comments": 88,
+      "history": 4
+    },
+    "plugins/_lib/call-context.mjs": {
+      "comments": 89,
+      "history": 5
+    },
+    "plugins/_lib/cell/context-contract.js": {
+      "comments": 84,
+      "history": 1
+    },
+    "plugins/_lib/cell/contract.js": {
+      "comments": 105,
+      "history": 5
+    },
+    "plugins/_lib/config-path.mjs": {
+      "comments": 35,
+      "history": 1
+    },
+    "plugins/_lib/context-budget.js": {
+      "comments": 81,
+      "history": 7
+    },
+    "plugins/_lib/context/providers/local-manifest.js": {
+      "comments": 73,
+      "history": 2
+    },
+    "plugins/_lib/danger-patterns.js": {
+      "comments": 161,
+      "history": 9
+    },
+    "plugins/_lib/destructive-gate.js": {
+      "comments": 88,
+      "history": 7
+    },
+    "plugins/_lib/diagnostic-lite.js": {
+      "comments": 2,
+      "history": 0
+    },
+    "plugins/_lib/kunxiansuo/diagnostic-card.js": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/_lib/kunxiansuo/file-guard.js": {
+      "comments": 20,
+      "history": 0
+    },
+    "plugins/_lib/kunxiansuo/local-fence.js": {
+      "comments": 30,
+      "history": 12
+    },
+    "plugins/_lib/kunxiansuo/retry-chain.js": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/_lib/model-endpoint.js": {
+      "comments": 30,
+      "history": 2
+    },
+    "plugins/_lib/plugin-esm-hint.mjs": {
+      "comments": 23,
+      "history": 1
+    },
+    "plugins/_lib/real-path.mjs": {
+      "comments": 75,
+      "history": 5
+    },
+    "plugins/_lib/sandbox/bootstrap.mjs": {
+      "comments": 11,
+      "history": 0
+    },
+    "plugins/_lib/secrets.js": {
+      "comments": 20,
+      "history": 0
+    },
+    "plugins/_lib/sensitive-paths.js": {
+      "comments": 51,
+      "history": 1
+    },
+    "plugins/_lib/tool-path-args.mjs": {
+      "comments": 49,
+      "history": 5
+    },
+    "plugins/_lib/tool-policy.js": {
+      "comments": 118,
+      "history": 13
+    },
+    "plugins/admission-gate.js": {
+      "comments": 30,
+      "history": 6
+    },
+    "plugins/agent.js": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/assembly-lock.js": {
+      "comments": 22,
+      "history": 5
+    },
+    "plugins/cell-context.js": {
+      "comments": 136,
+      "history": 8
+    },
+    "plugins/cell-file-txn.js": {
+      "comments": 188,
+      "history": 12
+    },
+    "plugins/cell-runtime.js": {
+      "comments": 774,
+      "history": 53
+    },
+    "plugins/channel-base.js": {
+      "comments": 13,
+      "history": 1
+    },
+    "plugins/chat-ui.js": {
+      "comments": 118,
+      "history": 24
+    },
+    "plugins/compaction.js": {
+      "comments": 75,
+      "history": 6
+    },
+    "plugins/config.js": {
+      "comments": 89,
+      "history": 22
+    },
+    "plugins/context-manager.js": {
+      "comments": 56,
+      "history": 10
+    },
+    "plugins/context-port.js": {
+      "comments": 141,
+      "history": 11
+    },
+    "plugins/event-sink.js": {
+      "comments": 6,
+      "history": 1
+    },
+    "plugins/experience-port.js": {
+      "comments": 136,
+      "history": 8
+    },
+    "plugins/gateway.js": {
+      "comments": 182,
+      "history": 4
+    },
+    "plugins/haotian-lite.js": {
+      "comments": 139,
+      "history": 28
+    },
+    "plugins/health.js": {
+      "comments": 28,
+      "history": 5
+    },
+    "plugins/heartbeat.js": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/kunxiansuo-local.js": {
+      "comments": 39,
+      "history": 8
+    },
+    "plugins/liuhe-lite.js": {
+      "comments": 150,
+      "history": 7
+    },
+    "plugins/model-openai.js": {
+      "comments": 104,
+      "history": 2
+    },
+    "plugins/plugin-context.js": {
+      "comments": 10,
+      "history": 3
+    },
+    "plugins/privacy.js": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/prompt-builder.js": {
+      "comments": 15,
+      "history": 3
+    },
+    "plugins/prompt-template.js": {
+      "comments": 2,
+      "history": 1
+    },
+    "plugins/readiness.js": {
+      "comments": 13,
+      "history": 2
+    },
+    "plugins/recycle-advisor.js": {
+      "comments": 12,
+      "history": 0
+    },
+    "plugins/runtime-env.js": {
+      "comments": 10,
+      "history": 1
+    },
+    "plugins/sandbox.js": {
+      "comments": 119,
+      "history": 18
+    },
+    "plugins/scene-inspect.js": {
+      "comments": 49,
+      "history": 3
+    },
+    "plugins/scene-switch-listener.js": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/session.js": {
+      "comments": 35,
+      "history": 14
+    },
+    "plugins/tool-executor.js": {
+      "comments": 769,
+      "history": 23
+    },
+    "plugins/tool-guard.js": {
+      "comments": 44,
+      "history": 9
+    },
+    "plugins/tool-loader.js": {
+      "comments": 114,
+      "history": 10
+    },
+    "plugins/tool-normalizer.js": {
+      "comments": 4,
+      "history": 1
+    },
+    "plugins/tools.js": {
+      "comments": 32,
+      "history": 6
+    },
+    "plugins/tools/lib/cpf-builder.mjs": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/tools/lib/cpf-format.mjs": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/tools/lib/cpf-tokenizer.mjs": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/tools/lib/detect-language.mjs": {
+      "comments": 0,
+      "history": 0
+    },
+    "plugins/tools/lib/schema.mjs": {
+      "comments": 24,
+      "history": 3
+    },
+    "plugins/tools/lib/session-id.mjs": {
+      "comments": 51,
+      "history": 7
+    },
+    "plugins/tools/lib/session-queue.mjs": {
+      "comments": 24,
+      "history": 4
+    },
+    "plugins/tools/lib/workspace.mjs": {
+      "comments": 40,
+      "history": 5
+    },
+    "plugins/tools/tool-bash.js": {
+      "comments": 14,
+      "history": 1
+    },
+    "plugins/tools/tool-cp.js": {
+      "comments": 29,
+      "history": 3
+    },
+    "plugins/tools/tool-list.js": {
+      "comments": 3,
+      "history": 2
+    },
+    "plugins/tools/tool-mv.js": {
+      "comments": 18,
+      "history": 3
+    },
+    "plugins/tools/tool-read.js": {
+      "comments": 13,
+      "history": 5
+    },
+    "plugins/tools/tool-rm.js": {
+      "comments": 70,
+      "history": 6
+    },
+    "plugins/tools/tool-stat.js": {
+      "comments": 3,
+      "history": 2
+    },
+    "plugins/tools/tool-todo.js": {
+      "comments": 6,
+      "history": 2
+    },
+    "plugins/tools/tool-validate.js": {
+      "comments": 5,
+      "history": 0
+    },
+    "plugins/tools/tool-write.js": {
+      "comments": 63,
+      "history": 16
+    },
+    "plugins/tui.js": {
+      "comments": 25,
+      "history": 9
+    },
+    "plugins/workspace.js": {
+      "comments": 101,
+      "history": 6
+    },
+    "plugins/ying-mini.js": {
+      "comments": 1,
+      "history": 0
+    }
+  },
+  "raises": [
+    {
+      "at": "2026-10-25T09:48:32.611Z",
+      "entries": [
+        "plugins/gateway.js history 0 → 3",
+        "plugins/gateway.js comments 168 → 177"
+      ]
+    },
+    {
+      "at": "2026-10-25T10:00:14.859Z",
+      "entries": [
+        "plugins/_lib/real-path.mjs history 3 → 5",
+        "plugins/_lib/real-path.mjs comments 54 → 75",
+        "plugins/sandbox.js history 16 → 18",
+        "plugins/sandbox.js comments 102 → 118",
+        "plugins/tool-executor.js history 0 → 1",
+        "plugins/tool-executor.js comments 435 → 439",
+        "plugins/tool-guard.js history 7 → 9",
+        "plugins/tool-guard.js comments 36 → 44",
+        "plugins/tools.js history 5 → 6",
+        "plugins/tools.js comments 29 → 32",
+        "plugins/tools/lib/workspace.mjs history 4 → 5",
+        "plugins/tools/lib/workspace.mjs comments 31 → 38"
+      ]
+    },
+    {
+      "at": "2026-10-25T10:08:50.397Z",
+      "entries": [
+        "plugins/sandbox.js comments 118 → 119",
+        "plugins/tools/lib/workspace.mjs comments 38 → 40"
+      ]
+    },
+    {
+      "at": "2026-10-25T11:03:20.689Z",
+      "entries": [
+        "plugins/model-openai.js comments 85 → 100"
+      ]
+    },
+    {
+      "at": "2026-10-25T11:47:25.915Z",
+      "entries": [
+        "plugins/tool-executor.js comments 439 → 467"
+      ]
+    },
+    {
+      "at": "2026-10-25T12:08:01.431Z",
+      "entries": [
+        "plugins/tool-executor.js history 1 → 3",
+        "plugins/tool-executor.js comments 467 → 479"
+      ]
+    },
+    {
+      "at": "2026-10-25T12:12:14.863Z",
+      "entries": [
+        "plugins/tool-executor.js history 3 → 4",
+        "plugins/tool-executor.js comments 479 → 485"
+      ]
+    },
+    {
+      "at": "2026-10-25T13:38:56.226Z",
+      "entries": [
+        "plugins/context-manager.js comments 47 → 56",
+        "plugins/model-openai.js comments 100 → 104"
+      ]
+    },
+    {
+      "at": "2026-10-25T15:14:33.356Z",
+      "entries": [
+        "plugins/_lib/context/providers/local-manifest.js comments 70 → 73",
+        "plugins/prompt-builder.js comments 13 → 15"
+      ]
+    },
+    {
+      "at": "2026-10-25T17:01:48.082Z",
+      "entries": [
+        "plugins/cell-file-txn.js comments 187 → 188",
+        "plugins/context-port.js comments 140 → 141",
+        "plugins/liuhe-lite.js comments 149 → 150",
+        "plugins/plugin-context.js comments 9 → 10",
+        "plugins/scene-inspect.js comments 47 → 49",
+        "plugins/tool-loader.js comments 106 → 114"
+      ]
+    },
+    {
+      "at": "2026-10-27T01:19:31.167Z",
+      "entries": [
+        "plugins/tool-executor.js comments 485 → 550"
+      ]
+    },
+    {
+      "at": "2026-10-27T06:32:09.166Z",
+      "entries": [
+        "plugins/tool-executor.js comments 550 → 575"
+      ]
+    },
+    {
+      "at": "2026-10-27T17:43:33.076Z",
+      "entries": [
+        "plugins/tool-executor.js comments 575 → 602"
+      ]
+    },
+    {
+      "at": "2026-10-28T01:09:02.609Z",
+      "entries": [
+        "plugins/_lib/danger-patterns.js comments 160 → 161",
+        "plugins/_lib/sensitive-paths.js comments 38 → 47"
+      ]
+    },
+    {
+      "at": "2026-10-28T07:13:35.906Z",
+      "entries": [
+        "plugins/_lib/config-path.mjs 新文件登记 → history 1 / comments 35",
+        "plugins/_lib/context-budget.js history 6 → 7",
+        "plugins/_lib/context-budget.js comments 73 → 81",
+        "plugins/_lib/destructive-gate.js history 6 → 7",
+        "plugins/_lib/destructive-gate.js comments 82 → 88",
+        "plugins/_lib/secrets.js comments 2 → 6",
+        "plugins/_lib/sensitive-paths.js history 0 → 1",
+        "plugins/_lib/sensitive-paths.js comments 47 → 51",
+        "plugins/config.js comments 72 → 75",
+        "plugins/tool-executor.js comments 602 → 607",
+        "plugins/tools/tool-mv.js history 2 → 3",
+        "plugins/tools/tool-mv.js comments 3 → 8",
+        "plugins/tools/tool-rm.js history 3 → 4",
+        "plugins/tools/tool-rm.js comments 5 → 17"
+      ]
+    },
+    {
+      "at": "2026-10-28T10:19:21.506Z",
+      "entries": [
+        "plugins/_lib/secrets.js comments 6 → 20",
+        "plugins/tools/tool-cp.js history 2 → 3",
+        "plugins/tools/tool-cp.js comments 3 → 29",
+        "plugins/tools/tool-rm.js history 4 → 5",
+        "plugins/tools/tool-rm.js comments 17 → 47"
+      ]
+    },
+    {
+      "at": "2026-10-28T10:26:16.642Z",
+      "entries": [
+        "plugins/tools/tool-mv.js comments 8 → 18"
+      ]
+    },
+    {
+      "at": "2026-10-28T12:57:05.935Z",
+      "entries": [
+        "plugins/config.js history 21 → 22",
+        "plugins/config.js comments 75 → 87",
+        "plugins/tools/tool-rm.js history 5 → 6",
+        "plugins/tools/tool-rm.js comments 47 → 70"
+      ]
+    },
+    {
+      "at": "2026-10-28T13:04:54.766Z",
+      "entries": [
+        "plugins/config.js comments 87 → 89"
+      ]
+    },
+    {
+      "at": "2026-10-28T14:20:22.015Z",
+      "entries": [
+        "plugins/recycle-advisor.js 新文件登记 → history 0 / comments 10"
+      ]
+    },
+    {
+      "at": "2026-10-28T14:23:42.343Z",
+      "entries": [
+        "plugins/recycle-advisor.js comments 10 → 12"
+      ]
+    },
+    {
+      "at": "2026-10-28T15:28:55.259Z",
+      "entries": [
+        "plugins/cell-runtime.js history 0 → 2",
+        "plugins/cell-runtime.js comments 358 → 406",
+        "plugins/tool-executor.js history 4 → 5",
+        "plugins/tool-executor.js comments 607 → 642"
+      ]
+    },
+    {
+      "at": "2026-10-28T15:35:25.456Z",
+      "entries": [
+        "plugins/tool-executor.js history 5 → 6",
+        "plugins/tool-executor.js comments 642 → 653"
+      ]
+    },
+    {
+      "at": "2026-10-28T16:13:46.433Z",
+      "entries": [
+        "plugins/cell-runtime.js history 2 → 3",
+        "plugins/cell-runtime.js comments 406 → 413",
+        "plugins/tool-executor.js history 6 → 8",
+        "plugins/tool-executor.js comments 653 → 674"
+      ]
+    },
+    {
+      "at": "2026-10-28T17:15:48.714Z",
+      "entries": [
+        "plugins/cell-runtime.js history 3 → 5",
+        "plugins/cell-runtime.js comments 413 → 443",
+        "plugins/haotian-lite.js history 23 → 25",
+        "plugins/haotian-lite.js comments 121 → 134",
+        "plugins/tool-executor.js history 8 → 10",
+        "plugins/tool-executor.js comments 674 → 707"
+      ]
+    },
+    {
+      "at": "2026-10-28T17:21:12.281Z",
+      "entries": [
+        "plugins/cell-runtime.js history 5 → 6",
+        "plugins/cell-runtime.js comments 443 → 445"
+      ]
+    },
+    {
+      "at": "2026-10-28T17:34:58.177Z",
+      "entries": [
+        "plugins/tool-executor.js history 10 → 12",
+        "plugins/tool-executor.js comments 707 → 716"
+      ]
+    },
+    {
+      "at": "2026-10-29T05:17:32.425Z",
+      "entries": [
+        "plugins/cell-runtime.js history 6 → 9",
+        "plugins/cell-runtime.js comments 445 → 468",
+        "plugins/haotian-lite.js history 25 → 26",
+        "plugins/haotian-lite.js comments 134 → 138",
+        "plugins/tool-executor.js history 12 → 16",
+        "plugins/tool-executor.js comments 716 → 739"
+      ]
+    },
+    {
+      "at": "2026-10-29T06:47:05.706Z",
+      "entries": [
+        "plugins/_lib/call-context.mjs history 3 → 5",
+        "plugins/_lib/call-context.mjs comments 57 → 89",
+        "plugins/cell-runtime.js history 9 → 21",
+        "plugins/cell-runtime.js comments 468 → 526",
+        "plugins/gateway.js history 3 → 4",
+        "plugins/gateway.js comments 177 → 182",
+        "plugins/haotian-lite.js history 26 → 28",
+        "plugins/haotian-lite.js comments 138 → 139",
+        "plugins/tool-executor.js history 16 → 23",
+        "plugins/tool-executor.js comments 739 → 769"
+      ]
+    },
+    {
+      "at": "2026-10-29T08:46:57.685Z",
+      "entries": [
+        "plugins/cell-runtime.js history 21 → 36",
+        "plugins/cell-runtime.js comments 526 → 644"
+      ]
+    },
+    {
+      "at": "2026-10-29T09:15:20.908Z",
+      "entries": [
+        "plugins/cell-runtime.js history 36 → 38",
+        "plugins/cell-runtime.js comments 644 → 657"
+      ]
+    },
+    {
+      "at": "2026-10-29T13:02:29.411Z",
+      "entries": [
+        "plugins/cell-runtime.js history 38 → 53",
+        "plugins/cell-runtime.js comments 657 → 738"
+      ]
+    },
+    {
+      "at": "2026-10-29T15:41:10.277Z",
+      "entries": [
+        "plugins/cell-runtime.js comments 738 → 747（close() 的三事实合同写在实现处，历史标记不变）"
+      ]
+    },
+    {
+      "at": "2026-10-29T17:29:04.645Z",
+      "entries": [
+        "plugins/cell-runtime.js comments 747 → 764"
+      ]
+    },
+    {
+      "at": "2026-10-30T03:39:33.278Z",
+      "entries": [
+        "plugins/cell-runtime.js comments 764 → 774"
+      ]
+    }
+  ]
+}

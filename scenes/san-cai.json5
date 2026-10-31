@@ -1,0 +1,18 @@
+{
+  name: "san-cai",
+  description: "三才联调场景",
+  eager: [
+    "ying-mini",
+    "model-openai",
+    "tool-executor",
+    // R0-120：本场景 eager 装配 tool-executor（工具执行入口）。工具的实际提供方由
+    // 下游工作树决定，本树无法保证"没有危险工具"——护栏与执行器同进同退。
+    "kunxiansuo-local",
+    "gateway",
+    // R0-103：`haotian-executor` / `workflow-loader` 是**库**不是插件
+    // （只有 `export async function executeNode` / `export { parseYaml, ... }`，
+    // 没有插件契约 name+init）⇒ 列在场景里从来不会被装载（内核静默跳过）。
+    // 已移除；它们仍作为库被其它插件 import，功能不受影响。
+  ],
+  lazy: [],
+}

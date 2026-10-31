@@ -1,0 +1,62 @@
+name: Release
+
+# tag 就是发布源。门禁链：
+#   npm run check → npm test → release-gate → npm publish（仅当 NPM_TOKEN 存在）→ GitHub Release
+# 没有 NPM_TOKEN 时跳过 npm publish，不把"渠道未配置"记成失败。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build gates — line budget / core manifest / comments / vendored bytes
+        run: npm run check
+
+      - name: Run all tests
+        run: npm test
+
+      - name: Release gate matrix (install acceptance included)
+        run: node scripts/release-gate.mjs --repeat 1 --json release-gate.json
+
+      - name: Upload release gate matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate
+          path: release-gate.json
+
+      - name: Publish to npm
+        if: env.NPM_TOKEN != ''
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: npm publish skipped (no NPM_TOKEN)
+        if: env.NPM_TOKEN == ''
+        run: echo "NPM_TOKEN is not configured; skipping npm publish."
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

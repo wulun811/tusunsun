@@ -1,0 +1,81 @@
+{
+  // 编程场景配置 (v1c)
+  // 场景配方：编程助手（插件清单 + 默认配置）
+  "name": "coding",
+  "version": "0.1.0",
+  "description": "AI 编程助手场景",
+  "include": ["base-system"],
+  "eager": [
+    // 外部会话仓会话路由器 + 提示构建层
+    "context-manager",
+    "prompt-builder",
+    "session",
+
+    // 专家池 (启动时从 data/experts.json 加载 3 个静态专家)
+
+    // 内置 git 仓库管理服务
+
+    // 代码分析基础设施（插件名 = 装配根里的文件名；子目录里的插件会被通用发现扫到）
+    // R0-103：原列表里还有 `code-quality` / `code-review`——它们的文件只存在于**下游工作树**的
+    // 插件目录里，本树装配根（`<root>/plugins`）扫不到 ⇒ 一直静默不装载。已移除：
+    // 要么改成本树可解析的名字，要么把那个目录加进 data/plugin-dirs.json（另议）。
+    "model-openai",
+    "sandbox",
+
+    // 智能模块
+    "tool-loader",
+    "tool-executor",
+    "haotian-lite",
+
+    // R0-120：本场景让 LLM **能执行任意命令**（tool-executor + tool-bash 经沙箱），
+    // 却没有装任何护栏 —— 那时唯一的保护是执行器内置的硬拦与软闸。编程场景恰恰是
+    // "删错一个目录就没了"的高发地，所以护栏必须默认在场。
+    // `kunxiansuo-local` 自带 setFence()，装配即接管工具护栏（R0-119 修好前它装了也不生效）。
+    "kunxiansuo-local",
+
+    // Agent 会话管理
+  ],
+  "lazy": [
+    // 按需加载
+    // R0-103：原列表里 `verify-pipeline` / `tool-git-worktree` / `tool-debug-runner` /
+    // `tool-security-review` / `tool-spec-gen` / `tool-tsc` 的文件只存在于**下游工作树**，
+    // 本树装配根扫不到 ⇒ 从未装载（同 eager 里的 code-quality/code-review）。已移除。
+    // `haotian-executor` 同理移除：它是**库**（只有 `export async function executeNode`），
+    // 没有插件契约，列在场景里也不会被装载。
+    "ying-mini",
+  ],
+  "defaultConfig": {
+    // R0-153（v0.9.32 续）：这里删掉了 3 个**零读者**的 privacy 键
+    // （neverRead / neverWrite / offlineMode）。
+    //
+    // 为什么这类键比 sandbox 那几个更该删：它们看起来是**隐私承诺**。
+    // 读到 `neverRead: [".env", "**/id_rsa", "**/credentials*"]` 的人会认为
+    // "这个场景不会读我的凭据"；而全仓**没有任何一行代码读它**（实测 grep：0 处引用，
+    // `plugins/privacy.js` 只读 `privacy.requireConfirmFor`）。
+    // 也就是说：这些凭据该被读还是被读，只是没人告诉你。
+    //
+    // 真正生效的隐私判据只有两条：
+    //   · `privacy.requireConfirmFor` —— 哪些动作需要人工确认（`privacy.shouldConfirm` 读它）；
+    //   · 工具层的 `resolveWorkspacePath` —— 工作区边界（但那是**边界不是沙箱**）。
+    // 若将来实现"禁读清单"，请**同时**加上读者与验收用例再回到这里 —— 不要先把键写进场景。
+    "privacy": {
+      "requireConfirmFor": ["delete_file", "dependency_change", "ci_change", "permission_change"]
+    },
+    // R0-138（v0.9.31 续）：这里删掉了 6 个**零读者**的 sandbox 配置键
+    // （strategy / dockerFallback / dockerIgnore / localConstraints.noNetwork /
+    //   localConstraints.maxCpuTimeMs）。
+    //
+    // 为什么要删而不是留着"以后实现"：读到这里的人会据此认为
+    // "coding 场景跑在 docker 里、禁网、有 CPU 上限"。全仓没有任何一行代码读它们
+    // （实测 grep：6 个键在 plugins/ 与 src/ 里读者数为 0），本项目的沙箱是
+    // `plugins/sandbox.js` —— fork 出的子进程 + 路径判据，**没有** docker、**没有**禁网、
+    // **没有** cgroup 限制。配置面承诺一个不存在的能力，比不写更糟：
+    // 它让读者以为已经有人管了。
+    //
+    // 真正生效的沙箱开关键只有两个（见 plugins/tool-executor.js）：
+    //   "sandbox.enabled"          —— 是否让内建工具经沙箱执行（默认关闭）
+    //   "sandbox.readAllow" / "sandbox.writeAllow" / "sandbox.deny" —— 路径判据
+    // 若将来实现 docker / 禁网 / CPU 上限，请**同时**加上读者与验收用例再回到这里，
+    // 而不是先把键写进场景。这一条是 R0-138 的全部内容。
+  }
+}

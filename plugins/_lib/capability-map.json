@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "intents": [
+    { "tag": "code_generation", "keywords": ["代码", "脚本", "写个", "实现", "编程", "function", "函数"], "required_caps": ["llm", "fs"], "suggested_plugins": ["code_gen", "fs"] },
+    { "tag": "data_analysis", "keywords": ["分析", "数据", "报告", "统计", "对比", "趋势"], "required_caps": ["llm", "search"], "suggested_plugins": ["search", "chart"] },
+    { "tag": "deployment", "keywords": ["部署", "上线", "运维", "发布", "发布到"], "required_caps": ["llm", "shell"], "suggested_plugins": ["deploy", "shell"] },
+    { "tag": "research", "keywords": ["搜索", "调研", "查找", "查一下", "了解", "search"], "required_caps": ["search", "llm"], "suggested_plugins": ["search", "web"] },
+    { "tag": "writing", "keywords": ["写", "翻译", "润色", "改写", "总结", "摘要"], "required_caps": ["llm"], "suggested_plugins": ["writer", "translate"] },
+    { "tag": "file_operation", "keywords": ["文件", "读取", "保存", "删除", "移动", "复制"], "required_caps": ["fs"], "suggested_plugins": ["fs"] },
+    { "tag": "system_admin", "keywords": ["配置", "设置", "管理", "状态", "查看"], "required_caps": ["shell", "llm"], "suggested_plugins": ["shell", "config"] },
+    { "tag": "other", "keywords": [], "required_caps": ["llm"], "suggested_plugins": ["llm"] }
+  ]
+}

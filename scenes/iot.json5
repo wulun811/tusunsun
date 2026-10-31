@@ -1,0 +1,15 @@
+// IoT 设备控制场景
+// 需要: 会话管理 + 模型（可选）
+// 适用: 智能家居、传感器数据采集、设备控制等
+{
+  name: "iot",
+  description: "IoT 设备控制与监控",
+  // v0.9.33（E3）：删除零读者 `schema` / `fallback` / `sceneContext`，能力面见
+  // docs/guides/scene-system.md。`sceneContext.disableTools` 尤其危险：它看起来像权限限制，
+  // 实际零读者 —— 真正生效的是 Cell 能力门与 tool-guard。
+  include: ["base-system"],
+  // R0-103（开源盘点 #1/#2）：会话 + 模型是服务型 provides（同步 getService 无法懒触发）⇒ eager；
+  // tui 不是插件（CLI 命令提供者），已移出；原 `optional: ["tools"]` 里的 "tools" 不是插件文件。
+  eager: ["session", "model-openai"],
+  plugins: [],
+}

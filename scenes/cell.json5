@@ -1,0 +1,40 @@
+// Cell 场景 —— 单 Cell 运行的**显式选择**（R0-126 / G1-G2）。
+//
+// 为什么单独一个场景，而不是塞进 gateway/coding：
+//   · Cell 引入的是**运行形态**（一个工作主体、固定工作区、一次一个任务），不是"多几个工具"。
+//     把它默认装进 gateway 会让所有既有部署多一条 `cell-runtime` 服务、多一层能力交集判定 ——
+//     而老用户既没有 Cell 也永远不会调它。
+//   · 老路径必须**一个字节不变**：不启用 Cell 的人 `start/chat/stop` 行为与 v0.9.18 完全一致。
+//     这是 G0-3 的硬要求（现有能力不回归），也是"Cell 是可选运行模式"的落地形态。
+//
+// 用法：
+//   tusunsun start --scene cell                 # 带 Cell 运行时的网关
+//   node examples/cells/single-cell.mjs         # 单 Cell 端到端示例（见该文件）
+//
+// 与 gateway 的区别只在**多一个** `cell-runtime`：其余能力（模型、工具、护栏、会话）逐项相同，
+// 所以"Cell 里跑的就是原来那套执行链"这句话是可检验的，而不是一句类比。
+{
+  name: "cell",
+  description: "单 Cell 运行形态 — 固定工作区 + 能力交集 + 任务/结果/验收分离",
+  // v0.9.33（E3）：删除零读者 `schema`，能力面见 docs/guides/scene-system.md。
+  // 复用 gateway 的装配（模型 + 工具 + 护栏 + 会话），再加 Cell 运行时。
+  include: ["base-system", "gateway"],
+  eager: [
+    // R0-126：Cell 运行时。它**不实现** Agent loop——驱动的是已有的 chat.handle 与工具链。
+    "cell-runtime",
+    // CTX-1（v0.9.22）：Cell 认知侧。四者都是**可选能力**，全部缺席（或不配 profile）时
+    // Cell 行为与 v0.9.21 一致：
+    //   · cell-context    —— profile → Cell 身份的可信绑定；没绑定时不接管系统提示词
+    //   · context-port    —— 有界目录 + 按 ref 受限读取（retrieval.provider=none 时返回空目录）
+    //   · experience-port —— 经验层薄接口（experience.provider=none 时**不注册**工具）
+    //   · compaction      —— 结构化摘要 + Cell 范围持久化
+    // 放在 cell 场景而不是 gateway：认知配置属于"有身份的运行主体"。
+    // 普通对话没有 Cell 身份，装了只会多一条永远不生效的服务。
+    "cell-context",
+    "context-port",
+    "experience-port",
+    "compaction",
+  ],
+  plugins: [],
+  optional: [],
+}

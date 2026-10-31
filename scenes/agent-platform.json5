@@ -1,0 +1,62 @@
+// Agent 平台模式
+// 加载昊天 DAG 引擎 + 专家路由
+//
+// 关于"经验层经验层"：这句话是**历史定位/规划出口**，不是本包的默认装配事实。
+// 本版没有可用的经验层服务提供者；经验侧只有 Cell 认知入口的薄接口
+// （`plugins/experience-port.js`，provider 默认 `none`，且只在 `--scene cell` 下按 profile 启用）。
+// 不要把本场景描述读成"已经默认集成经验层"——那会让使用者据此相信一个不存在的召回能力。
+// 适用: 多步任务编排、自动化审批、复杂协作
+{
+  name: "agent-platform",
+  // v0.9.27：`description` 与 `schema` 此前都在承诺**本包并未装配**的能力。
+  // 实测本场景装配完成后只有 9 个底座插件（admission-gate / assembly-lock / config /
+  // event-sink / gateway / privacy / readiness / runtime-env / workspace），
+  // `model-openai` 与 `session` 在**懒加载池**（需 `callCapability` 触发），
+  // `tool-executor` 在 `optional`（惰性：仅展示、不装配）。于是：
+  //   · 「模型调用」——`model` 服务不存在（只有懒加载池里的条目）；
+  //   · 「工具执行」——`tool-executor` 与 `tools` 都不在，`tool.*` 能力数为 0；
+  //   · 「代码编写」「飞书集成」「通道适配」——本包无对应装配，一直如此。
+  // 声明是给 `scene show` / AI 推荐 / 用户选型读的。把它们写成"有"，等于让使用者
+  // 据此相信一个跑不起来的形态。现改为如实描述：**它是扩展装配的起点配方**，
+  // 不是"全功能平台"。
+  description: "Agent 扩展装配起点 — 模型 + 会话 + 底座；工具按需在 optional 追加",
+  // v0.9.33（E3）：删除零读者 `schema`。能力面声明已迁到 docs/guides/scene-system.md
+  // 「各场景声称的能力面」一节 —— 那里本来就是给人看的，而这里的键装配器从不读。
+  include: ["base-system"],
+  // v0.9.27：`session` 与 `model-openai` 此前在 `plugins`（= 懒加载池）里。
+  // 它们是**服务型** provides，而 `getService` 是同步 API —— 无法按需触发懒加载，
+  // 且本场景没有 `haotian-lite`（`chat.handle` 的提供者，gateway 场景靠它带起懒加载）。
+  // 实测原配置装配完成后 `model` / `session` 服务**都不存在**，模型调用无从发生。
+  // 这与 gateway-lite 在 R0-103 修过的是同一个坑（当时注释写的是"原先把它们放在 plugins
+  // 里 ⇒ 场景声明'纯模型代理'，实际启动后既没有模型也没有会话"）。
+  eager: ["session", "model-openai"],
+  plugins: [],
+  optional: [
+    "ying-mini",
+    "tool-executor",
+    "tool-guard",
+    "tool-loader",
+    "tool-cp",
+    "tool-mv",
+    "tool-rm",
+    "tool-todo",
+    "tool-validate",
+    "context-manager",
+    "prompt-builder",
+    // R0-120：本场景可选装配 tool-rm/tool-mv/tool-cp —— 一旦启用就是"能删能搬"。
+    // 护栏同样放进 optional：与危险工具同进同退，不会出现"开了危险工具却没护栏"的形态。
+    "kunxiansuo-local",
+
+    // v0.13.0（R0-163 / ADR-07 §2）：六合 Lite 适配层。**必须留在 optional，不得进 eager。**
+    //
+    // 它是本包第一次随附第三方代码（`vendor/liuhe-lite/`，43 文件 / 7 201 行）。
+    // 内置的理由是"可审计、可核哈希"，不是"我们要用它"——没有它，土行孙功能一个都不少。
+    // 一旦进 `eager`，"零第三方代码运行"就变成"零 npm 依赖但带一份第三方代码"，
+    // 而对外文档写的正是前一句。这两件事常被混成一件，所以在这里写死。
+    //
+    // 要启用：把它从本列表挪进 `eager`（或在自己的场景里显式列）。
+    // 启用后模型可见的只有 `tool-liuhe-anchor` 与 `tool-liuhe-inspect` 两个只读工具；
+    // `apply` / `undo` 只走能力面（`core.callCapability('liuhe.apply', …)`），见 ADR-07 §4。
+    "liuhe-lite",
+  ],
+}

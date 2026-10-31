@@ -1,0 +1,59 @@
+// AI 网关模式（默认）
+// 完整网关能力：模型代理 + 工具执行 + 安全底座 + 记忆 + 对话 + 场景切换
+// 适用: 模型代理、代码助手、安全沙箱、Chat UI
+// 注：渠道（飞书等）不默认集成；需要时按 examples/channel-feishu.js 自行接入。
+{
+  name: "gateway",
+  description: "AI 网关 — 模型代理 + 工具执行 + 安全底座",
+  // v0.9.33（E3）：删除零读者 `schema`，能力面见 docs/guides/scene-system.md。
+  // 原有的自查注释（"38 个工具/长期记忆/外部诊断服务在开源产物里全不成立"）也已随迁移保留在文档里。
+  include: ["base-system"],
+  eager: [
+    "config",
+    "gateway",
+    "tool-loader",
+    "tool-executor",
+    "tool-guard",
+    "session",
+    "prompt-builder",
+    "haotian-lite",
+    "model-openai",
+    "context-manager",
+    "plugin-context",
+    "chat-ui",
+  ],
+  plugins: [
+    "haotian-lite",
+    "model-openai",
+    "session",
+    "tool-guard",
+    "tool-loader",
+    "tool-executor",
+    "tool-normalizer",
+    "prompt-builder",
+    "prompt-template",
+    "context-manager",
+    "plugin-context",
+    "ying-mini",
+    "scene-switch-listener",
+    "tool-bash",
+    "tool-read",
+    "tool-write",
+    "tool-list",
+    "tool-stat",
+    "tool-cp",
+    "tool-mv",
+    "tool-rm",
+    "tool-todo",
+    "tool-validate",
+    "chat-ui",
+    "health",
+    "sandbox",
+    // R0-120：本场景装配 tool-bash / tool-write / tool-rm —— LLM 能删能改。
+    // 护栏与危险工具必须同时在场，否则"默认 gateway 不安全"这句话就成立。
+    "kunxiansuo-local",
+  ],
+  optional: [
+    "heartbeat",
+  ],
+}

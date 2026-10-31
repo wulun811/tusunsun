@@ -1,0 +1,73 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# Config
+*.local.json
+.env
+.env.local
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# State directory (usually ~/.tusunsun)
+.tusunsun/
+.session/
+
+# Coverage / test output
+coverage/
+.nyc_output/
+test-results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+__pycache__/
+
+# Build output (this package is the source tree; dist/ appears only if you run build:oss)
+dist/
+build/
+
+# Binaries
+*.zip
+# 送审包的校验附件：每打一次包就换一次，属**生成物**，不进版本库
+# （rc.19 期间误用 `git add -A` 把它提交过，导致树摘要变动、基线漂移）。
+*.zip.sha256
+*.tar.gz
+*.tgz
+*.db
+*.db-shm
+*.db-wal
+*.faiss
+*.pkl
+*.bin
+*.onnx
+*.model
+
+# R3（v0.16.0-rc）：发布门禁的**生成物**。不要提交——它的内容随每次跑（环境、耗时）而变，
+# 而“可复核的矩阵”应该由 `npm run release:gate` 重新生成，而不是当成源码供着。
+# 交付包里的那份是冻结的副本（带 sha256）。
+release-gate.json
+.release-install.json
+
+# 六合 Lite 审计用的第三方包解包（别人的代码，不是本仓源；tarball 已在上面被 *.tgz 忽略）
+# 审计结论见 docs/quality/next-phase-and-liuhe-lite-review.md；复审时重新解包即可。
+liuhelite/
+
+# 形式化验证的 TLC 工具链（4.5MB 第三方 jar，不属本仓源）。
+# 版本与供应链 hash 在 verification/model/tla2tools.jar.sha256；用
+# `node verification/model/fetch-tlc.mjs` 重新取得并校验。没网就用 TLA2TOOLS_JAR 指到别处。
+verification/model/.tools/
+
+# TLC 生成的轨迹工件（*_TTrace_*.tla/.bin）：跑一次就变，不是源。
+# 反例轨迹已经以**动作名序列**写进 verification/counterexamples/index.jsonl。
+verification/model/*_TTrace_*

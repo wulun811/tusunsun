@@ -1,0 +1,56 @@
+{
+  "name": "@jieai/liuhe-lite",
+  "version": "0.1.3",
+  "description": "LiuHe Lite — 面向土行孙 Cell 的可选器官：文件动作可感知、可核验、有限可恢复（写前锚点 → 提交或拒绝 → 写后核查 → Undo → 事后对账）。零第三方运行时依赖，不需要 Rust parser，不需要 SQLite。",
+  "keywords": [
+    "liuhe",
+    "liuhe-lite",
+    "tusunsun",
+    "cell",
+    "file-safety",
+    "version-anchor",
+    "undo",
+    "journal"
+  ],
+  "type": "module",
+  "main": "./lite/index.js",
+  "exports": {
+    ".": "./lite/index.js",
+    "./errors": "./lite/errors.js",
+    "./receipt": "./lite/receipt.js"
+  },
+  "scripts": {
+    "test": "node tests/run.mjs && node tests/parity.mjs && node tests/cell-acceptance.mjs && node tests/docs-claims.mjs && node tests/provenance.mjs",
+    "acceptance": "node tests/cell-acceptance.mjs",
+    "docs:claims": "node tests/docs-claims.mjs",
+    "provenance": "node tests/provenance.mjs",
+    "baseline": "node tests/baseline.mjs"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wulun811/LiuHe.git",
+    "directory": "integration/liuhe-lite"
+  },
+  "files": [
+    "lite/",
+    "vendor/",
+    "tests/",
+    "examples/",
+    "README.md",
+    "CHANGELOG.md",
+    "LIUHE-LITE-FEASIBILITY.md",
+    "ACTION-RECEIPT-MAPPING.md",
+    "SAFETY.md",
+    "INTEGRATION-GUIDE.md",
+    "RECEIPT-FIELD-ALIGNMENT.md",
+    "LICENSE"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "note": "用例数棘轮：每套至少该有多少用例/多少个测试文件。少了就红——退出码 0 与 Total: N 只能证明跑了一次，不能证明跑的是原来那个量。只增不减：新增用例不会红，删除用例会。",
+  "suites": {
+    "Smoke": {
+      "min_cases": 2
+    },
+    "Unit": {
+      "min_cases": 1508,
+      "dir": "unit",
+      "min_files": 120,
+      "_note": "公开树移除 1 条私有引擎测试（R0-103/T10），基线相应下调 1；新增用例仍只增不减"
+    },
+    "Integration": {
+      "min_cases": 63,
+      "dir": "integration",
+      "min_files": 6
+    }
+  }
+}

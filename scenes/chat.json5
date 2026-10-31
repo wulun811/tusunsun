@@ -1,0 +1,20 @@
+// 纯对话场景
+// 不需要工具，只需要模型 + 会话 + 记忆
+// 适用: 闲聊、问答、翻译、文案创作等
+{
+  name: "chat",
+  description: "纯对话交互（无工具调用）",
+  // v0.9.33（E3）：删除了零读者的 `schema` 块。它写着 capabilities/useCases/template，
+  // 但 `src/` 与 `plugins/` 里**没有任何读者**（grep 实证）。零读者配置比没有更糟：
+  // 读者会以为"这个场景已经声明了能力面"，而真正生效的是 Cell 能力门与 tool-guard。
+  // 元数据若要保留，应写成随包文档（docs/），而不是一个不会被读的 JSON 键。
+  include: ["base-system"],
+  // R0-103（开源盘点 #1/#2）：场景声明"纯对话"，则会话/模型/对话处理器都必须在 eager
+  // （session/model 是服务型 provides，同步 getService 无法按需触发懒加载）；
+  // tui 不是插件（CLI 命令提供者），已移出。
+  eager: ["session", "haotian-lite", "model-openai"],
+  plugins: [],
+  // v0.9.33（E3）：删除零读者的 `fallback`。它看起来像"haotian-lite 不可用时降级"，
+  // 实际没有任何代码读它 —— 装配不会因为 session/haotian-lite 缺失而改道。
+  // 真实的降级机制在准入闸门（admission-gate）与就绪面（readiness），不在这里。
+}
