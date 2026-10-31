@@ -44,6 +44,8 @@
 //   · **Windows**：没有进程组信号，只能 kill 组长；孙进程交给引擎看门狗。本模块在
 //     win32 上 `liveGroupMembers()` 恒返回空 —— 也就是"整组回收"在 Windows 上是**未覆盖**，
 //     不能宣称成立。
+//   · **macOS**：没有 `/proc`，`isProcessRunning()` 恒为 false，僵尸/整组判活同样**未覆盖**；
+//     相关用例在非 Linux 上记 SKIP，不折算为通过。
 //   · **`setsid`/`nohup` 脱离进程组的后代**：pgid 变了，本模块按 pgid 找不到它。
 //   · **pgid 复用**：整组消失后 pgid 理论上可被新进程组复用。为了把风险压到可忽略，
 //     我们**只在组内确实有存活成员时**才发组信号（`liveGroupMembers().length > 0`），

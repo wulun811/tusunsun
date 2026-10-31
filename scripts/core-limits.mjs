@@ -17,7 +17,7 @@ export const CORE_MAX_LINES_PREVIOUS = 4857;
  * 删掉 50 行空行、换进 50 行超长代码，行数一行不变而体积可以翻倍。
  * 行数管「结构有多大」，字节管「每行里塞了多少东西」。两个都要管，缺一个就有一个形状的绕过。
  */
-export const CORE_MAX_BYTES = 260189;
+export const CORE_MAX_BYTES = 260153;
 
 /**
  * **核心源码内容指纹**（仓库级锚）：逐文件 sha256。任何字节变化都会与实测不符。

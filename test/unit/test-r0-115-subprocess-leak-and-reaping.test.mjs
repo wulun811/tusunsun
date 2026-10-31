@@ -50,6 +50,7 @@ export async function setup(runner) {
 
   // ── W4：整组回收能带走孙进程（测试侧的根因修复）────────────────────────
   runner.test('R0-115/W4 受管 spawn：回收能带走**孙进程**（只 kill 子进程会留孤儿）', async () => {
+    if (process.platform !== 'linux') { runner.noteSkip('非 Linux（无 /proc）：整组回收判活未覆盖'); return; }
     const dir = track(tmpSockDir('w4'));
     const marker = join(dir, 'grand.pid');
     // bash（子） → sleep（孙）：整组回收必须两个都没
@@ -76,6 +77,7 @@ export async function setup(runner) {
 
   // ── W9：孙进程**忽略 SIGTERM** 时必须整组补 SIGKILL（第四轮 P1-03 的原始复现）──
   runner.test('R0-115/W9 孙进程忽略 SIGTERM：回收必须补 SIGKILL 并真的杀死它（不再"组长退了就算成功"）', async () => {
+    if (process.platform !== 'linux') { runner.noteSkip('非 Linux（无 /proc）：整组回收判活未覆盖'); return; }
     const dir = track(tmpSockDir('w9'));
     const marker = join(dir, 'stubborn.pid');
     // 子与孙都忽略 SIGTERM；只剩 SIGKILL 能带走。
@@ -100,6 +102,7 @@ export async function setup(runner) {
 
   // ── W10：僵尸不算活（评审 P1-03 的第 1 条：Z 曾被判成"仍在运行"）────────
   runner.test('R0-115/W10 僵尸（Z）不算在运行：isProcessRunning 必须为 false，且不阻止判定为已回收', async () => {
+    if (process.platform !== 'linux') { runner.noteSkip('非 Linux（无 /proc）：僵尸判活未覆盖'); return; }
     // 子进程 fork 出立即退出的孙进程且**不** wait ⇒ 留下一个 Z 态僵尸，父进程继续睡。
     const z = spawnManaged('python3', ['-c', [
       'import os, sys, time',

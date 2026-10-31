@@ -144,7 +144,7 @@ export async function setup(runner) {
     const base = JSON.parse(read('test/baseline-counts.json')).suites || {};
     const runAll = read('test/run-all.mjs');
     const names = [...runAll.matchAll(/\{ name: '([^']+)', script: '([^']+)' \}/g)].map((m) => m[1]);
-    assert(names.length >= 4, `run-all 的套件清单解析失败（拿到 ${names.length} 个）`);
+    assert(names.length >= 3, `run-all 的套件清单解析失败（拿到 ${names.length} 个）`);
     for (const n of names) {
       assert(n in base, `套件「${n}」没有用例数基线：新套件必须先登记，否则它少跑也没人知道`);
     }

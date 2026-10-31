@@ -4,6 +4,10 @@ import { globFiles } from './glob-files.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { takeCoverage } from 'node:v8';
+import { realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
+if (process.platform === 'darwin') process.env.TMPDIR = realpathSync(tmpdir());
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

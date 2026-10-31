@@ -67,7 +67,7 @@ export async function setup(runner) {
     await mod.init(core);
     const env = core._services['runtime-env'];
     const snap = env.snapshot();
-    assert(snap.platform.platform === 'linux', '应报告 linux 平台');
+    assert(snap.platform.platform === process.platform, `应报告实际平台 ${process.platform}`);
     assert(existsSync(snap.dirs.worktrees.split('/default')[0]) || snap.dirs.worktrees, 'worktree 目录应可解析');
     assert(snap.preflight && Array.isArray(snap.preflight.checks), 'preflight 应有 checks');
     const names = snap.preflight.checks.map((c) => c.name);

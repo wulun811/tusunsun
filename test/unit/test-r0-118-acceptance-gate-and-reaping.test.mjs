@@ -98,6 +98,7 @@ export async function setup(runner) {
   // 第一版这里只 grep 了 `state !== 'Z'` / `liveGroupMembers` 这些字样，结果三个变异**全绿**
   //（R0-118 自查：把判据退回只看组长，字符串仍在文件里）。改成像 W9/W10 那样真起进程看结果。
   runner.test('R0-118/G4 行为判据：僵尸不算活；忽略 SIGTERM 的孙进程必须被整组 SIGKILL 带走', async () => {
+    if (process.platform !== 'linux') { runner.noteSkip('非 Linux（无 /proc）：僵尸与整组回收判活未覆盖'); return; }
     const proc = await import(pathToFileURL(join(ROOT, 'test', 'lib', 'proc.mjs')).href);
     assert(typeof proc.isProcessRunning === 'function' && typeof proc.spawnManaged === 'function',
       'proc.mjs 必须导出 isProcessRunning / spawnManaged');

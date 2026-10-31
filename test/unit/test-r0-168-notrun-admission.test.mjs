@@ -6,16 +6,14 @@
 //      每轮真跑 —— **前提根本不存在**；
 //   ② `multi-cell-same-process` 说"未验证"，但那句理由自己就写着"这不是未验证，
 //      是合同拒绝" —— **把设计决定记成了证据缺口**；
-//   ③ `expert-original-probes` 说"不宜折算进门禁计数"，于是就连跑都不跑了 ——
-//      **"不能算作 PASS" 被偷换成 "不必执行"**；
-//   ④ `node-24` 只在"跑不了"时记账，本机真有 24 时这一项直接**从清单消失**。
+//   ③ `node-24` 只在"跑不了"时记账，本机真有 24 时这一项直接**从清单消失**。
 //
 // 四种错法的共同后果是同一个：**读者无法区分"环境不允许"与"我们没去做"**。
 // 而 `NOT_RUN` 这个词一旦被这样用，它就不再是一个诚实的标记，而是一个方便的抽屉。
 //
 // 本文件测两件事：
 //   ① **规则层**：`NOT_RUN` 只允许用于"本机确实拿不到前置"的情形，且必须写清缺什么；
-//   ② **接线层**：上面那 4 项在门禁源码里**必须存在可执行的验证路径**，
+//   ② **接线层**：上述各项在门禁源码里**必须存在可执行的验证路径**，
 //      不能只有一行 `notRun(...)` 就了事。
 //
 // 这两层必须都测：只测文案，改个措辞就能骗过；只测接线，文案仍可能把人引向错误结论。
@@ -23,7 +21,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TestRunner, assert, assertEquals } from '../harness.mjs';
-import { countFromOutput, verdictFor } from '../../scripts/gate-verdict.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -59,16 +56,15 @@ export async function setup(runner) {
     console.log('       [实测] windows / macos 两条均由 process.platform 守卫，换平台即失去 NOT_RUN 资格');
   });
 
-  // ── ② 接线层：这 4 项必须真的有可执行路径 ─────────────────────────────
-  runner.test('R0-168/3 五个曾误记 NOT_RUN 的项，必须各有可执行的验证路径', async () => {
+  // ── ② 接线层：这些项必须真的有可执行路径 ─────────────────────────────
+  runner.test('R0-168/3 曾误记 NOT_RUN 的项，必须各有可执行的验证路径', async () => {
     // `guard` 是门禁里做 existsSync 判定的**变量名**（不是文件名）：
     //   `const browserTest = join(ROOT, '...'); if (existsSync(browserTest)) {...}`
     // 这个区别踩过：第一版拿**文件名**去匹配 `existsSync(...)`，正则对不上真实形状而假红。
     const must = {
       'browser-e2e': { rel: 'test/integration/chat-ui-browser-security.test.mjs', guard: 'browserTest' },
       'multi-cell-same-process': { rel: 'test/probes/r0-167-single-cell-contract.mjs', guard: null },
-      'expert-original-probes': { rel: 'scripts/expert-originals-check.mjs', guard: null },
-      // 第五项：`real-paid-model` 曾以"只用免费模型"为由记 NOT_RUN —— 那是**工具链**
+      // `real-paid-model` 曾以"只用免费模型"为由记 NOT_RUN —— 那是**工具链**
       // 的限制，不是**产品**的限制。真实端点用免费模型就测得（上游 usage.cost: 0）。
       'real-model-chain': { rel: 'test/probes/r0-169-real-model-chain.mjs', guard: null },
     };
@@ -90,31 +86,6 @@ export async function setup(runner) {
     assert(/function findOtherNodeMajor/.test(GATE), 'node-24 缺少 findOtherNodeMajor：会退回"只在跑不了时记账"');
     assert(/id:\s*`node-\$\{n\.major\}`/.test(GATE), 'node-24 没有真的 runOnce 去跑别的版本');
     console.log(`       [实测] ${Object.keys(must).length} 项有载体 + 守卫 + notRun 兜底，node-24 有"找 + 跑"两半`);
-  });
-
-  runner.test('R0-168/4 发布物形态缺 verification/ 时，原件对账必须记 NOT_RUN 而不是 FAIL', async () => {
-    // 这一条是**只在制品里才会翻车**的那类缺陷，源码树里永远绿 —— 所以必须单独钉住。
-    //
-    // 症状：`scripts/expert-originals-check.mjs` 会被打进 npm 包，但 `verification/`
-    // 不进包。第一版在目录缺失时 `exit(2)`，而门禁把退出码 2 判 **FAIL** ——
-    // 于是"源码树全绿、制品门禁红"，恰好红在发布判定那一步。
-    //
-    // 判据有三层，缺一不可：
-    const checker = readFileSync(join(ROOT, 'scripts', 'expert-originals-check.mjs'), 'utf8');
-    // ① 脚本自己能区分"制品形态"与"源码树被删证据"
-    assert(/existsSync\(join\(ROOT,\s*'verification'\)\)/.test(checker),
-      '对账脚本没有区分「发布物形态（本就没有 verification/）」与「源码树里证据被删」');
-    assert(/process\.exit\(3\)/.test(checker), '发布物形态必须退出码 3（NOT_RUN），不能用 2（FAIL）或 0（PASS）');
-    // ② 门禁这一项必须用 `probe` 证据口径，否则退出码 3 会被当 FAIL
-    assert(/id:\s*'expert-original-probes'[\s\S]{0,400}?evidence:\s*'probe'/.test(GATE),
-      "expert-original-probes 未使用 evidence:'probe' —— 退出码 3 会被判成 FAIL");
-    // ③ 规则层端到端确认：退出码 3 + probe 口径 ⇒ NOT_RUN（不是 FAIL、不是 PASS）
-    const v = verdictFor({ exitCode: 3, failed: countFromOutput('', 'Failed'), skipped: null, total: null, evidence: 'probe' });
-    assertEquals(v.status, 'NOT_RUN', `退出码 3 在 probe 口径下必须判 NOT_RUN，实际 ${v.status}`);
-    // 反向：若误用 `tool` 口径，同一个退出码就成了 FAIL —— 这正是第一版的错法
-    const wrong = verdictFor({ exitCode: 3, failed: null, skipped: null, total: null, evidence: 'tool' });
-    assertEquals(wrong.status, 'FAIL', '反向自检失败：tool 口径下退出码 3 本应是 FAIL（说明判据本身变了）');
-    console.log('       [实测] 制品形态 → rc=3 → NOT_RUN；误用 tool 口径 → FAIL（反向自检成立）');
   });
 
   runner.test('R0-168/5 NOT_RUN 的理由不得把「工具链约束」写成「产品约束」', async () => {

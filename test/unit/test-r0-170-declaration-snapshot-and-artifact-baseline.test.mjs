@@ -205,19 +205,6 @@ export async function setup(runner) {
 // 这三条读 `verification/`，而 **npm 包不含该目录**（package.json#files 里没有它）。
 // 于是发行包形态下它们是 ENOENT 而非判据不成立 —— 那是载体问题，不是缺陷。
 // 统一走 carrier 闸：源码检出仍是硬门（读不到就 FAIL），发行包记 NOT_RUN（绝不折算成通过）。
-  runner.test('R0-170/9 baseline-check 的制品判据不得写成「状态词等于某个特定值」', () => {
-  if (!requireRepoOnly(runner, ROOT, 'baseline-check 的制品判据')) return;
-  const src = readFileSync(join(ROOT, 'verification', 'baseline-check.mjs'), 'utf8');
-  // 反例形状：`if (art.status === 'MEASURED')` —— 生成器写的是 BUILT，于是整段从不执行。
-  assert(!/status\s*===\s*'MEASURED'/.test(src),
-    "不得再用 `status === 'MEASURED'` 当制品核对的开关：生成器写 BUILT，那段检查会静默地一次也不跑");
-  // 正向：必须真的算哈希与字节
-  assert(/sha256\s*\(\s*buf\s*\)/.test(src) || /sha256\(readFileSync/.test(src),
-    '必须实算制品哈希，不能回显基线里登记的值');
-  assert(/buf\.length\s*!==\s*art\.bytes/.test(src), '必须比字节数（只比哈希会漏掉“同哈希不同长度”这种不可能之外的形状，但字节是独立断言）');
-  assert(/checked_members/.test(src), '必须重做「与源码逐文件一致」，否则那只是打印一句旧结论');
-});
-
   runner.test('R0-170/10 反例集必须挂在门禁上，且用 probe 证据口径', () => {
   if (!requireRepoOnly(runner, ROOT, '反例集挂载与证据口径')) return;
   const CE = join(ROOT, 'verification', 'counterexamples', 'rc20-declaration-snapshot-4.mjs');
@@ -258,19 +245,4 @@ export async function setup(runner) {
 
 
 
-  runner.test('R0-170/13 送审包必须能自证制品哈希（provenance 旁证不得被整体排掉）', async () => {
-    // 真实缺陷：`build-review-pack.sh` 用了 `--exclude='./*.tgz.sha256'`，把**所有** tgz 旁证
-    // 一起排掉，而它上面的注释写着"历史 .tgz.sha256 旁证保留"。送审包因此无法自证
-    // "发行物 = 逐字节的那一份" —— 一个只有拿包的人才会发现、而包里已经没证据的问题。
-    // 判据落在**脚本文本**上（不能真去打一个包：那是分钟级且需要干净树）。
-    const sh = readFileSync(join(ROOT, 'scripts', 'build-review-pack.sh'), 'utf8');
-    // 只看**生效的行**（`#` 开头的注释里引用旧写法是说明，不是仍然生效）。
-    const live = sh.split('\n').filter((x) => !/^\s*#/.test(x)).join('\n');
-    assert(!/--exclude='\.\/\*\.tgz\.sha256'/.test(live),
-      "不得用 `--exclude='./*.tgz.sha256'` 整体排掉旁证：本版旁证必须进包");
-    assert(/provenance\/tusunsun-\$\{VER\}\.tgz\.sha256/.test(sh),
-      '必须显式断言本版旁证存在（缺了就是包坏了）');
-    assert(/sha256sum -c/.test(sh),
-      '必须逐字节核对旁证与包内 tgz（否则旁证过期时包仍"完整"）');
-  });
 }

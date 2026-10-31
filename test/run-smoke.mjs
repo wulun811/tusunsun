@@ -2,6 +2,10 @@ import { IntegrationTestRunner } from './harness.mjs';
 import { globFiles } from './glob-files.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
+if (process.platform === 'darwin') process.env.TMPDIR = realpathSync(tmpdir());
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
