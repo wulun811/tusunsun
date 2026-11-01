@@ -24,11 +24,11 @@ function _toolArgsHash(args) {
 
 // 围栏的**所有者**：登记表按 owner 记账，install 返回 token，remove 必须拿 token/owner 来摘。
 // 只能摘自己装的那一份，摘完若列表为空才真的变成“无护栏”；执行时按执行器自己的 core 解析归属。
-// 为什么不能用模块级单变量：同进程两个装配会互相串 —— 后装的覆盖前装的（前者的护栏不再被调用），
-// 任一方 stop() 会把护栏整个清空，且没有任何观测面能回答“现在装着谁的护栏”。
-// 硬边界：支持的形态仍是「1 Cell : 1 Core : 1 进程」，这里不宣称同进程多租户已安全。
-const _fences = new Map();     // token → { fence, owner, core, at }
-let _fenceSeq = 0;
+// 不能是模块级变量：同进程两个装配会互相串；也不能是**模块级** Map —— 装载器给每个插件 import
+// 加 `?pmN` 标签，插件互相 import 拿到的是另一个模块实例，模块级表会分成两份（实测：状态报
+// installed:true，判据一次都没跑）。硬边界仍是「1 Cell : 1 Core : 1 进程」，不宣称多租户已安全。
+const _fences = (globalThis[Symbol.for('tusunsun.tool-executor.fences')] ??= new Map());   // token → { fence, owner, core, at }
+const _fenceSeqState = (globalThis[Symbol.for('tusunsun.tool-executor.fenceSeq')] ??= { n: 0 });
 
 /** 兜底护栏：无 owner 的旧调用方（`setFence(fence)` 单参）仍可用，但要能被观测到。 */
 const LEGACY_OWNER = '__legacy__';
@@ -88,7 +88,7 @@ export function setFence(fence, opts = {}) {
     token: { value: token, enumerable: true },
     owner: { value: owner, enumerable: true },
   }));
-  _fences.set(token, { fence, owner, core: opts.core || null, at: Date.now(), seq: ++_fenceSeq, disposer });
+  _fences.set(token, { fence, owner, core: opts.core || null, at: Date.now(), seq: ++_fenceSeqState.n, disposer });
   return { token, disposer };
 }
 
@@ -185,15 +185,16 @@ function _fenceView(fence) {
   return Object.freeze(view);
 }
 
-/** 观测面：现在装着谁的护栏（诊断/日志/`/health` 用；不返回围栏对象、不返回 token）。 */
+/** 观测面：现在装着谁的护栏（诊断/日志/`/health` 用；count/all 按传入的 core 过滤，不传才是进程级；不返回围栏对象与 token）。 */
 export function fenceStatus(core = null) {
   const active = _resolveFenceRecord(core);
+  const scoped = core ? [..._fences.values()].filter((r) => !r.core || r.core === core) : [..._fences.values()];
   return {
     installed: Boolean(active),
     owner: active?.owner || null,
     scope: active ? (active.core ? 'core' : 'process') : 'none',
-    count: _fences.size,
-    all: [..._fences.values()].map((r) => ({ owner: r.owner, scope: r.core ? 'core' : 'process', at: r.at })),
+    count: scoped.length,
+    all: scoped.map((r) => ({ owner: r.owner, scope: r.core ? 'core' : 'process', at: r.at })),
   };
 }
 
@@ -255,8 +256,9 @@ export class ToolExecutor {
     api_version: '1',
     owner: 'platform',
     provides: [
-      { service: 'tool.executor', api_version: '1.0.0' },
-      { service: 'tool.compose', api_version: '1.0.0' },
+      { service: 'tool-executor', api_version: '1.0.0' },
+      { service: 'tool.compose', api_version: '1.0.0', type: 'capability' },
+      { service: 'action.inspect', api_version: '1.0.0', type: 'capability' },
     ],
     requires: [
       { service: 'tool-registry', range: '>=0.4.0', optional: false },
@@ -1671,7 +1673,7 @@ export class ToolExecutor {
 
     const _activeFence = resolveFence(this.core);
     const _fence = _activeFence?.fence || null;
-    if (_fence && mode !== 'full-auto') {
+    if (_fence) {
       // 展开相对路径供捆仙索检查
       const expandedArgs = { ...args }
       if (expandedArgs.path && !expandedArgs.path.startsWith('/')) {
@@ -1682,9 +1684,10 @@ export class ToolExecutor {
       }
       // 已通过软闸确认的那条命令，允许护栏跳过**它自己的**不可恢复操作判据：`checkCommand` 把
       // `rm|mv|shred|dd` 一律判 CMD_GUARD、不看是否确认过，两者同开会变成“确认了也没用”。
-      // 其余判据（敏感路径、符号链越界、写前必读、schema、熔断、限流）照常执行，一个不少。
-      const fenceCtx = (this._fenceConfirmed && this._fenceConfirmed.toolName === toolName
-        && this._fenceConfirmed.sessionId === (sessionId || null))
+      // full-auto 等价于「已预授权不可恢复操作」，只享这条豁免；其余判据（敏感路径、越界、写前必读、熔断、限流）照跑。
+      const acked = (this._fenceConfirmed && this._fenceConfirmed.toolName === toolName
+        && this._fenceConfirmed.sessionId === (sessionId || null)) || mode === 'full-auto';
+      const fenceCtx = acked
         ? { ...(this.core?._fenceContext || {}), irreversibleAcknowledged: true }
         : this.core?._fenceContext;
       const pre = await _fence.preCheck(toolName, expandedArgs, sessionId || null, chainId || null, fenceCtx);

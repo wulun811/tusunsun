@@ -346,5 +346,89 @@ export async function setup(runner) {
         'README 必须写明"不可恢复操作要核对影响面"这条新行为（否则模型/用户不知道会被问）');
       console.log('       [实测] README 如实标注默认场景与软闸行为');
     });
+
+    // ── T9–T12：0.20.2 下游报告的四条（先复现、再修；锁行为不锁实现） ──────
+    // 这四条共同点是「看起来在工作」：日志正常、状态接口正面、没有任何异常。
+    // 所以锁必须是**行为级**的：走真实装配路径，断言判据真的被调用。
+
+    /** 与 CLI 同一条装配（createRuntime → PluginManager.loadAll → core.start）。
+     *  只有这条路能暴露「插件 import 插件」拿到的是另一个模块实例 —— 直接 new 执行器测不出来。 */
+    const wireRuntime = async () => {
+      const { createRuntime } = await imp('src/core/core.js');
+      const { PluginManager } = await imp('src/core/plugin-manager.js');
+      const stateDir = join(mkdtempSync(join(tmpdir(), 'tt-wire-')), 'state');
+      const rt = createRuntime({ stateDir, pluginsDir: join(ROOT, 'plugins') });
+      const pm = new PluginManager(rt.core);
+      rt.core.registerService('plugin-manager', pm);
+      pm.addDirectory(join(ROOT, 'plugins'));
+      await pm.loadAll(['config', 'tool-executor', 'kunxiansuo-local']);
+      await rt.core.start();
+      return { rt, exec: rt.core.getService('tool-executor') };
+    };
+
+    runner.test('R0-119/T9 围栏表必须跨模块实例可见：真实装配下执行器真的调用捆仙索', async () => {
+      const { rt, exec } = await wireRuntime();
+      try {
+        const mv = await exec._checkPreFlight('tool-bash', { command: 'mv /tmp/a /tmp/b' }, 's', null);
+        assertEquals(mv?.diagnostic?.code, 'CMD_GUARD',
+          '装载路径下执行器必须真的调用围栏（修前这里返回 null：围栏写进了另一个模块实例的 Map）');
+        const env = await exec._checkPreFlight('tool-write', { path: '.env' }, 's', null);
+        assertEquals(env?.diagnostic?.code, 'FS_GUARD', '敏感路径判据必须生效，不能只“状态报装了”');
+        // 观测面与判据必须同源：状态说装了，就必须真的在拦。
+        const { fenceStatus } = await imp('plugins/tool-executor.js');
+        assert(fenceStatus(rt.core).installed === true, '状态接口必须报“已装配”');
+        console.log('       [实测] 真实装配下 mv→CMD_GUARD、.env→FS_GUARD，状态与判据同源');
+      } finally { await rt.core.stop(); }
+    });
+
+    runner.test('R0-119/T10 full-auto 只豁免“确认”，不得整块跳过围栏判据', async () => {
+      const { rt, exec } = await wireRuntime();
+      try {
+        await rt.core.getService('config').setAndSave('tools.permissionMode', 'full-auto');
+        const mv = await exec._checkPreFlight('tool-bash', { command: 'mv /tmp/a /tmp/b' }, 's', null);
+        assert(!mv?.status, 'full-auto 是用户显式选择“不要打断”：不可恢复命令不得被 CMD_GUARD 二次拒绝');
+        for (const p of ['.env', '.git/config']) {
+          const r = await exec._checkPreFlight('tool-write', { path: p }, 's', null);
+          assertEquals(r?.diagnostic?.code, 'FS_GUARD', `${p}：敏感路径判据不随 full-auto 关闭`);
+        }
+        console.log('       [实测] full-auto 下 mv 放行（豁免确认），.env/.git/config 仍 FS_GUARD');
+      } finally { await rt.core.stop(); }
+    });
+
+    runner.test('R0-119/T11 服务名必须与注册名一致：manifest 不得写点号别名', async () => {
+      const { rt } = await wireRuntime();
+      try {
+        assert(rt.core.getService('tool-executor'), '按注册名必须取得到执行器');
+        assert(!rt.core.getService('tool.executor'), '点号别名不是服务名，必须取不到');
+        const { validateAssembly } = await imp('plugins/admission-gate.js');
+        const fake = (name, requires) => ({ name, version: '1.0.0', owner: 't', provides: [], requires });
+        const all = new Map(rt.core.plugins);
+        all.set('probe-real', fake('probe-real', { 'tool-executor': '>=0.8.0' }));
+        all.set('probe-dot', fake('probe-dot', { 'tool.executor': '>=0.8.0' }));
+        const v = validateAssembly(all).violations || [];
+        assert(!v.some((x) => x.plugin === 'probe-real'),
+          '按真实注册名声明依赖不得被判缺失（修前这里红：准入表用的是 manifest 里的点号名）');
+        assert(v.some((x) => x.plugin === 'probe-dot'),
+          '按点号声明依赖必须被判缺失（修前这里绿：运行时 getService 是 null，等于假绿灯）');
+        console.log('       [实测] 真名通过、点号被点名；manifest 与 registerService 同名');
+      } finally { await rt.core.stop(); }
+    });
+
+    runner.test('R0-119/T12 fenceStatus 的 count/all 必须按 core 过滤', async () => {
+      const { setFence, removeFence, fenceStatus } = await imp('plugins/tool-executor.js');
+      const cA = { tag: 'A' }, cB = { tag: 'B' };
+      const a = setFence({ preCheck() {} }, { owner: 'fence-A', core: cA });
+      const b = setFence({ preCheck() {} }, { owner: 'fence-B', core: cB });
+      try {
+        const sa = fenceStatus(cA), sb = fenceStatus(cB), global = fenceStatus(null);
+        assertEquals(sa.owner, 'fence-A');
+        assertEquals(sb.owner, 'fence-B');
+        assertEquals(sa.all.filter((x) => x.owner === 'fence-B').length, 0, 'A 的 all[] 不得含 B 的围栏');
+        assertEquals(sb.all.filter((x) => x.owner === 'fence-A').length, 0, 'B 的 all[] 不得含 A 的围栏');
+        assertEquals(sa.count, sa.all.length, 'count 必须与 all 同源');
+        assert(sa.count < global.count, '单个 core 的读数必须窄于进程级总数');
+        console.log('       [实测] 两个 core 各报 1 条，all[] 不含对方，count 与 all 同源');
+      } finally { removeFence(a); removeFence(b); }
+    });
   }
 }

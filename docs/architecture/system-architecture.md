@@ -37,7 +37,7 @@
 |---|---|---|---|
 | 入口 | `tusunsun.mjs`（73 行）、`scripts/cli.mjs`（820 行） | 893 行 | 中 |
 | 内核 | `src/core/*.js` | **8 文件 / 4889 行** | **极低**（有行数预算，见 ADR-10） |
-| 插件 | `plugins/*.js` | **40 文件 / 19311 行** | 高 |
+| 插件 | `plugins/*.js` | **40 文件 / 19314 行** | 高 |
 | 工具插件 | `plugins/tools/*.js` | **10 文件 / 1260 行** | 高 |
 | 插件库 | `plugins/_lib/**` | **22 文件 / 4681 行** | 中 |
 | 场景配方 | `scenes/*.json5` | 10 个 | 高 |
@@ -52,7 +52,7 @@
 
 ```bash
 node scripts/line-check.js | tail -6            # 内核：src/core 总行 4889/4889
-ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19311
+ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19314
 ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 ```
 
@@ -203,7 +203,7 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 | 插件 | 行数 | 提供 | 清单 |
 |---|---:|---|---|
 | `tool-loader` | 475 | tool-registry（服务） | 类字段 |
-| `tool-executor` | 2674 | tool.executor、tool.compose | v2 清单 |
+| `tool-executor` | 2677 | tool-executor、tool.compose、action.inspect | v2 清单 |
 | `tool-guard` | 126 | tool-guard（服务） | 类字段 |
 | `tool-normalizer` | 57 | tool-normalizer（服务）、tool.toOpenAI、tool.toAnthropic、tool.describe | 类字段 |
 | `sandbox` | 446 | sandbox | v2 清单 |

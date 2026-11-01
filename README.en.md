@@ -122,7 +122,7 @@ tusunsun keeps long-lived responsibilities in a small kernel and puts fast-movin
 | Core size | **4,889 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
 | External npm runtime dependencies | **0** |
 | 0.20.0 tarball | **436 files / ~1.80 MB** (measured with `npm pack`) |
-| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,252 lines total |
+| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,255 lines total |
 | Bundled third-party code | Yes — `ws` (18 files) and `liuhe-lite` (43 files) ship with provenance and per-file hashes. "No install-time dependencies" is **not** the same as "no third-party code" |
 
 > Line-count convention: the **microkernel is 4,889 lines** across 8 files; the enforced budget is
@@ -158,7 +158,7 @@ Measured on `0.20.0` (Linux x64 / Node 22.22.2):
 
 | Check | Public source checkout | npm artifact (unpacked) |
 | --- | ---: | ---: |
-| Unit tests | **1,505 / 1,505 pass / 0 fail / 0 skip** | **1,505 total / 1,495 pass / 0 fail / 10 skip** |
+| Unit tests | **1,509 / 1,509 pass / 0 fail / 0 skip** | **1,509 total / 1,499 pass / 0 fail / 10 skip** |
 | Integration | **63 / 63** | **63 / 63** |
 | Smoke | **2 / 2** | **2 / 2** |
 | Counterexample probes | **27 probes all rc=0** | same (probes ship with the package) |
@@ -181,6 +181,8 @@ Ask an agent to "clean up temp files". It proposes a recursive delete — but do
 **Another layer is an attention gate for dangerous operations.** For operations that cannot be undone, the tool layer can first measure the blast radius and return a confirmation question, requiring the caller to state necessity, scope, recoverability and the affected targets before proceeding. Commands that are explicitly forbidden are hard-rejected.
 
 **The Y025 confirmation is attention, not human approval and not a sandbox**: it first asks the caller to see the blast radius. Whether to continue is the caller's decision from what is visible, and the executor still has the final say.
+
+Fence installation and enforcement must share one source: if `fenceStatus()` says installed, it must actually block; `full-auto` only waives confirmation, not sensitive-path, path-boundary, read-before-write, circuit-breaker or rate-limit checks.
 
 Finally, **receipts must separate intent from fact**: the model saying "I deleted it" is not the same as the files having been removed as intended; and if a side effect partly happened, it cannot simply be reported as "failed, nothing to do".
 
