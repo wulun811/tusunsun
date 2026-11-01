@@ -122,7 +122,10 @@ class ToolLoader {
       _owner: stub._owner,
       name: stub.name,
       description: stub.description || '',
-      parameters: { type: 'object', properties: {} },
+      // 回收后的存根必须保留**声明过的** parameters。写死空 schema 的话，工具闲置
+      // 被回收后，模型看到的参数声明从完整版本退化成 `{}`（danger_ack 等字段凭空消失）
+      // —— 懒索引前、懒加载后、回收后三处对模型必须是同一份契约。
+      parameters: stub.parameters || { type: 'object', properties: {} },
     });
 
     const filePath = this._fileCache.get(stub._filename);

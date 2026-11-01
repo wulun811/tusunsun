@@ -1654,8 +1654,6 @@ export class ToolExecutor {
         };
       }
       if (gateResult && gateResult.__ack) {
-        // 已确认：剥掉确认字段，别让它漏进工具的 schema 校验（tool-bash 只认 command）
-        delete args[ACK_FIELD];
         // 记在实例上，供捆仙索复述。确认标记**必须带会话**：裸实例字段会让另一个会话的
         // 同一工具调用继承它。
         this._fenceConfirmed = { sessionId: sessionId || null, toolName, command: String(gateResult.record.command) };
@@ -1663,6 +1661,10 @@ export class ToolExecutor {
           command: String(gateResult.record.command).slice(0, 300),
           measured: gateResult.record.measured,
           ack: gateResult.record.ack,
+          // 这次「确认」是**模型复述了内核实测的影响面**，不是人类批准，也不是沙箱放行。
+          // 审计里把这两件事分开记，读日志的人才不会把 Y025 当成审批流。
+          ack_by: 'model-restatement',
+          human_approved: false,
           sessionId: sessionId || 'N/A',
           timestamp: Date.now(),
         });
@@ -1670,6 +1672,11 @@ export class ToolExecutor {
         this._fenceConfirmed = null;
       }
     }
+
+    // Y025 的确认字段是**软闸元数据**，不是工具业务参数：无论上面走的是确认路径、
+    // `full-auto` 豁免，还是根本没进软闸（工具本身不可装命令），都不得漏进 handler 入参
+    // 或能力 schema 校验。位置必须在软闸之后、派发之前 —— 软闸自己已从 `args` 读过它。
+    if (Object.hasOwn(args, ACK_FIELD)) delete args[ACK_FIELD];
 
     const _activeFence = resolveFence(this.core);
     const _fence = _activeFence?.fence || null;

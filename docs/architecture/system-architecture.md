@@ -1,4 +1,4 @@
-# 土行孙系统架构（0.20.0）
+# 土行孙系统架构（0.20.2）
 
 > 这份文档讲**整个随包系统**：内核、**全部随包插件**、场景配方，以及它们之间的接口。
 >
@@ -37,9 +37,9 @@
 |---|---|---|---|
 | 入口 | `tusunsun.mjs`（73 行）、`scripts/cli.mjs`（820 行） | 893 行 | 中 |
 | 内核 | `src/core/*.js` | **8 文件 / 4889 行** | **极低**（有行数预算，见 ADR-10） |
-| 插件 | `plugins/*.js` | **40 文件 / 19314 行** | 高 |
-| 工具插件 | `plugins/tools/*.js` | **10 文件 / 1260 行** | 高 |
-| 插件库 | `plugins/_lib/**` | **22 文件 / 4681 行** | 中 |
+| 插件 | `plugins/*.js` | **40 文件 / 19336 行** | 高 |
+| 工具插件 | `plugins/tools/*.js` | **10 文件 / 1281 行** | 高 |
+| 插件库 | `plugins/_lib/**` | **22 文件 / 4763 行** | 中 |
 | 场景配方 | `scenes/*.json5` | 10 个 | 高 |
 | 内置第三方 | `vendor/ws`、`vendor/liuhe-lite` | 逐文件 sha256 校验 | 低 |
 | 示例 | `examples/` | 10 个文件（含 2 个 Cell 示例） | 低 |
@@ -52,7 +52,7 @@
 
 ```bash
 node scripts/line-check.js | tail -6            # 内核：src/core 总行 4889/4889
-ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19314
+ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19336
 ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 ```
 
@@ -202,8 +202,8 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 
 | 插件 | 行数 | 提供 | 清单 |
 |---|---:|---|---|
-| `tool-loader` | 475 | tool-registry（服务） | 类字段 |
-| `tool-executor` | 2677 | tool-executor、tool.compose、action.inspect | v2 清单 |
+| `tool-loader` | 477 | tool-registry（服务） | 类字段 |
+| `tool-executor` | 2683 | tool-executor、tool.compose、action.inspect | v2 清单 |
 | `tool-guard` | 126 | tool-guard（服务） | 类字段 |
 | `tool-normalizer` | 57 | tool-normalizer（服务）、tool.toOpenAI、tool.toAnthropic、tool.describe | 类字段 |
 | `sandbox` | 446 | sandbox | v2 清单 |
@@ -219,9 +219,9 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 
 | 插件 | 行数 | 提供 | 清单 |
 |---|---:|---|---|
-| `model-openai` | 693 | model（服务） | 类字段 |
+| `model-openai` | 692 | model（服务） | 类字段 |
 | `session` | 253 | session（服务） | 类字段 |
-| `haotian-lite` | 820 | chat.handle | 类字段 |
+| `haotian-lite` | 831 | chat.handle | 类字段 |
 | `context-manager` | 379 | context（服务） | 类字段 |
 | `context-port` | 485 | context-port（服务） | 类字段 |
 | `experience-port` | 574 | experience-port（服务） | 类字段 |
@@ -278,7 +278,7 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 
 | 插件 | 行数 | 能力 |
 |---|---:|---|
-| `tool-bash.js` | 112 | tool.bash |
+| `tool-bash.js` | 132 | tool.bash |
 | `tool-cp.js` | 187 | tool.cp |
 | `tool-list.js` | 55 | tool.list |
 | `tool-mv.js` | 120 | tool.mv |

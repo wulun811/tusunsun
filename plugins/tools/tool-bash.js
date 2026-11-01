@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { declarableSchema } from './lib/schema.mjs';
 import { matchDangerousCommand } from '../_lib/danger-patterns.js';
+import { ACK_FIELD } from '../_lib/destructive-gate.js';
 
 // 执行结果信封：权威状态 = **真实进程退出事实**（exitCode / signal / spawn 错误 / 自家超时），
 // stdout/stderr 只作数据，不用来推断退出结果；`result` 是 LLM 可见的合并文本。
@@ -21,10 +22,30 @@ class ToolBash {
   };
   perf = { avg_latency_ms: 200, p99_latency_ms: 5000 };
   cohesion = 'atomic';
-  description = 'Run bash command. Params: command (shell command text)';
+  description = 'Run bash command. Params: command (shell command text). danger_ack ONLY after a Y025 "needs reasoning" result: restate the measured blast radius {reason, files, scope} to retry';
   parameters = {
     type: 'object',
-    properties: { command: { type: 'string', description: 'The shell command to execute' } },
+    properties: {
+      command: { type: 'string', description: 'The shell command to execute' },
+      // Y025 软闸的确认入口。它必须出现在**模型可见的 parameters** 里，否则模型根本
+      // 发现不了重试合同（只有 `command` 时模型只能猜或原样重试）。
+      // 它**不是**工具的业务参数：执行器预检读取并校验通过后剥离，工具本体仍然只认 `command`。
+      // core 的 input_schema 只支持属性级 `type`，所以这份嵌套声明会由 `declarableSchema()`
+      // 剥成 `{ type: 'object', description }` 再交给注册层 —— 两边各自有效，互不冒充。
+      [ACK_FIELD]: {
+        type: 'object',
+        description: 'ONLY after a Y025 needs_reasoning challenge: restate the measured blast radius, then resend the same command. Do not guess these values.',
+        properties: {
+          reason: { type: 'string', description: 'Why this irreversible operation is necessary (at least 24 characters; not a restatement of the command)' },
+          files: {
+            anyOf: [{ type: 'integer' }, { type: 'string' }],
+            description: 'Must equal measured.files: an integer, or the string "unbounded" when the range cannot be measured statically',
+          },
+          scope: { type: 'string', description: 'Must equal measured.scope: "inside" (all targets under the workspace) or "mixed" (some targets outside it)' },
+        },
+        required: ['reason', 'files', 'scope'],
+      },
+    },
     required: ['command'],
   };
 

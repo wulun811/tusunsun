@@ -38,7 +38,7 @@
       "history": 7
     },
     "plugins/_lib/diagnostic-lite.js": {
-      "comments": 2,
+      "comments": 14,
       "history": 0
     },
     "plugins/_lib/kunxiansuo/diagnostic-card.js": {
@@ -150,7 +150,7 @@
       "history": 4
     },
     "plugins/haotian-lite.js": {
-      "comments": 139,
+      "comments": 143,
       "history": 28
     },
     "plugins/health.js": {
@@ -218,7 +218,7 @@
       "history": 14
     },
     "plugins/tool-executor.js": {
-      "comments": 769,
+      "comments": 773,
       "history": 23
     },
     "plugins/tool-guard.js": {
@@ -226,7 +226,7 @@
       "history": 9
     },
     "plugins/tool-loader.js": {
-      "comments": 114,
+      "comments": 117,
       "history": 10
     },
     "plugins/tool-normalizer.js": {
@@ -254,7 +254,7 @@
       "history": 0
     },
     "plugins/tools/lib/schema.mjs": {
-      "comments": 24,
+      "comments": 27,
       "history": 3
     },
     "plugins/tools/lib/session-id.mjs": {
@@ -270,7 +270,7 @@
       "history": 5
     },
     "plugins/tools/tool-bash.js": {
-      "comments": 14,
+      "comments": 19,
       "history": 1
     },
     "plugins/tools/tool-cp.js": {
@@ -605,6 +605,17 @@
       "at": "2026-10-30T03:39:33.278Z",
       "entries": [
         "plugins/cell-runtime.js comments 764 → 774"
+      ]
+    },
+    {
+      "at": "2026-11-01T16:16:22.175Z",
+      "entries": [
+        "plugins/_lib/diagnostic-lite.js comments 2 → 14",
+        "plugins/haotian-lite.js comments 139 → 143",
+        "plugins/tool-executor.js comments 769 → 773",
+        "plugins/tool-loader.js comments 114 → 117",
+        "plugins/tools/lib/schema.mjs comments 24 → 27",
+        "plugins/tools/tool-bash.js comments 14 → 19"
       ]
     }
   ]

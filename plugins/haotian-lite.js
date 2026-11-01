@@ -1,4 +1,4 @@
-import { toLLMText } from './_lib/diagnostic-lite.js';
+import { toLLMText, toNeedsReasoningText } from './_lib/diagnostic-lite.js';
 import { matchDangerousCommand, classifyIrreversible } from './_lib/danger-patterns.js';
 import { wsRequest, C, c, CHAT_TIMEOUT_MS } from '../scripts/cli-transport.mjs';
 import { randomUUID } from 'node:crypto';
@@ -434,6 +434,18 @@ class HaotianLite {
             status: tr.status,
             result: tr.result ? String(tr.result).slice(0, 500) : '',
           }).catch(err => { this.core?.log?.('warn', `[haotian-lite] yingMini recordEvent(tool_call) failed: ${err.message}`) });
+        }
+        // Y025（软闸）的 `needs_reasoning` 是**待回答的挑战**，不是错误：执行器已经把实测
+        // 影响面、四个问题与重试字段放进 `tr.challenge`，这里必须原样呈现给模型。
+        // 落进下面的通用分支就只剩 `Error: ${tr.error}` —— 模型看不到数字，只能猜。
+        // 状态区别要保留：既不当成 success，也不并进 blocked（后者是不可重试的拒绝）。
+        if (tr.status === 'needs_reasoning') {
+          history.push({
+            role: 'tool',
+            tool_call_id: tr.tool_call_id,
+            content: toNeedsReasoningText(tr),
+          });
+          continue;
         }
         if (tr.status === 'blocked') {
           let toolName = tr.tool || 'unknown';

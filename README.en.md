@@ -13,7 +13,7 @@
 
 ![One-page system architecture](assets/architecture-overview.jpg)
 
-*One-page architecture: entry points, scene assembly, the 8-file kernel and its plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is the `0.20.0` public release.
+*One-page architecture: entry points, scene assembly, the 8-file kernel and its plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is the `0.20.2` public release.
 The itemised list (all 50 plugins) is in [System architecture](docs/architecture/system-architecture.md).*
 
 **The figures ship with the repository only — they are not part of the npm package** (the README is in the package, the images are not, so they render as placeholders on npm).
@@ -26,8 +26,8 @@ node tusunsun.mjs scene list
 node tusunsun.mjs scene show chat
 ```
 
-> **Release status**: `0.20.0` was the first public open-source release and is
-> **not published to the npm registry** (`npm view tusunsun` returns 404 — install from source or
+> **Release status**: `0.20.2` is the current public open-source release (`0.20.0` was the first)
+> and is **not published to the npm registry** (`npm view tusunsun` returns 404 — install from source or
 > GitHub). This is a **Developer Preview for trusted local environments**; it does not promise
 > untrusted-code isolation, cross-process exactly-once, or production readiness on every platform.
 
@@ -117,12 +117,12 @@ The thing developers fear is not volume — it is **not knowing what else to rea
 
 tusunsun keeps long-lived responsibilities in a small kernel and puts fast-moving business capability into plugins and scenes.
 
-| Engineering fact (measured on 0.20.0) | Value |
+| Engineering fact (measured on 0.20.2) | Value |
 | --- | --- |
 | Core size | **4,889 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
 | External npm runtime dependencies | **0** |
-| 0.20.0 tarball | **436 files / ~1.80 MB** (measured with `npm pack`) |
-| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,255 lines total |
+| 0.20.2 tarball | **437 files / ~1.81 MB** (measured with `npm pack`) |
+| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,380 lines total |
 | Bundled third-party code | Yes — `ws` (18 files) and `liuhe-lite` (43 files) ship with provenance and per-file hashes. "No install-time dependencies" is **not** the same as "no third-party code" |
 
 > Line-count convention: the **microkernel is 4,889 lines** across 8 files; the enforced budget is
@@ -154,11 +154,11 @@ Examples:
 
 tusunsun builds invariants, contracts, positive and negative examples and regression tests around the six semantics. Design review uses the "four questions and one cross-check" method to pin down authority, source of truth and boundaries, and higher-risk changes get formal constraints and verification where appropriate. **The method is not the proof; re-runnable counterexamples and checkable results are.**
 
-Measured on `0.20.0` (Linux x64 / Node 22.22.2):
+Measured on `0.20.2` (Linux x64 / Node 22.22.2):
 
 | Check | Public source checkout | npm artifact (unpacked) |
 | --- | ---: | ---: |
-| Unit tests | **1,509 / 1,509 pass / 0 fail / 0 skip** | **1,509 total / 1,499 pass / 0 fail / 10 skip** |
+| Unit tests | **1,513 / 1,513 pass / 0 fail / 0 skip** | **1,513 total / 1,503 pass / 0 fail / 10 skip** |
 | Integration | **63 / 63** | **63 / 63** |
 | Smoke | **2 / 2** | **2 / 2** |
 | Counterexample probes | **27 probes all rc=0** | same (probes ship with the package) |
@@ -180,7 +180,7 @@ Ask an agent to "clean up temp files". It proposes a recursive delete — but do
 
 **Another layer is an attention gate for dangerous operations.** For operations that cannot be undone, the tool layer can first measure the blast radius and return a confirmation question, requiring the caller to state necessity, scope, recoverability and the affected targets before proceeding. Commands that are explicitly forbidden are hard-rejected.
 
-**The Y025 confirmation is attention, not human approval and not a sandbox**: it first asks the caller to see the blast radius. Whether to continue is the caller's decision from what is visible, and the executor still has the final say.
+**The Y025 confirmation is attention, not human approval and not a sandbox**: it first asks the caller to see the blast radius. Whether to continue is the caller's decision from what is visible, and the executor still has the final say. The `needs_reasoning` result enters the next model turn as a tool result (not folded into `Error`), the model retries from the visible `files` / `scope`, and the audit records `ack_by: 'model-restatement'` with `human_approved: false`.
 
 Fence installation and enforcement must share one source: if `fenceStatus()` says installed, it must actually block; `full-auto` only waives confirmation, not sensitive-path, path-boundary, read-before-write, circuit-breaker or rate-limit checks.
 
@@ -231,8 +231,10 @@ Different scenes, machines, models and concurrency change these numbers. They al
 ### Same-machine comparison (2026-10-31, N=30)
 
 These numbers were measured on the **development-line `0.20.1` tree** against opencode 1.18.29;
-the public `0.20.0` tree has not been re-run. Both kernels are the same 8 files; the differences are
-public-release comment edits and a Windows scene-path fix (36 bytes net). Keep that premise when quoting.
+the public `0.20.2` tree has not been re-run. Both kernels are the same 8 files; the differences are
+public-release comment edits and a Windows scene-path fix (36 bytes net). `0.20.2` adds the Y025
+model-closure parameters and challenge text, so per-turn context may shift slightly — keep the
+"measured on the 0.20.1 tree" premise when quoting, and do not present these as a 0.20.2 re-run.
 
 Method: startup = `spawn → HTTP ready endpoint returns <500`; memory = `VmRSS` 1.2 s after ready;
 context = one real request body captured by a local recorder; density = N independent `gateway`
@@ -277,8 +279,8 @@ git clone <repo> && cd tusunsun
 node tusunsun.mjs scene list
 
 # 2) Build a tgz and install that
-npm pack                      # produces tusunsun-0.20.0.tgz
-npm install -g ./tusunsun-0.20.0.tgz
+npm pack                      # produces tusunsun-0.20.2.tgz
+npm install -g ./tusunsun-0.20.2.tgz
 ```
 
 Without a global install, replace `tusunsun` with `node tusunsun.mjs`.
@@ -311,7 +313,7 @@ node tusunsun.mjs start
 To connect a real model, configure the OpenAI-compatible endpoint, model name and API key. Offline checks, scene enumeration and the deterministic Cell examples need no model credentials.
 
 > **Boundaries**: trusted-local and internal integration are usable; the public OSS Developer Preview
-> artifact is **not published to npm** — use the public `0.20.0` tree. We do not promise
+> artifact is **not published to npm** — use the public `0.20.2` tree. We do not promise
 > untrusted-code isolation, cross-process exactly-once, or production readiness on every platform.
 
 For more detail see

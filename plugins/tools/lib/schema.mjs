@@ -22,6 +22,10 @@ const UNSUPPORTED = new Set([
   'enum', 'const', 'oneOf', 'anyOf', 'allOf', 'not', 'pattern', 'format',
   'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
   'minLength', 'maxLength', 'items', 'minItems', 'maxItems', 'uniqueItems', '$ref',
+  // 属性子表只允许 `type` + title/description/default；嵌套的对象子结构（如
+  // `danger_ack: {properties, required}`）在这里整体剥掉 —— core 不递归校验子结构，
+  // 留着会在注册期被具名拒绝，工具直接装不上。模型仍从 `parameters` 看到完整声明。
+  'properties', 'required', 'additionalProperties',
 ]);
 
 /**
