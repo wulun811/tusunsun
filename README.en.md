@@ -1,5 +1,7 @@
 # Tusunsun (土行孙)
 
+> **A semantic microkernel for LLM-native agents.**
+
 > **Let your Agent change with the work.**
 
 Sometimes you just want to chat. Next you need to read files, change code, or bring in your own business tools.
@@ -46,6 +48,10 @@ The microkernel lives in `src/core/` (its line budget is stated once, under Desi
 Zero npm runtime dependencies and vendored `ws` support offline tarball installation; model connectivity is separate.
 These engineering choices support the design, without establishing better model quality or lower resource use.
 
+![A small kernel and local edits](assets/small-core-easier-change.jpg)
+
+*Conceptual comparison: a typical heavily integrated framework on the left, a small kernel plus plugin boundaries on the right. The bars and ranges indicate direction only; they are not measurements from this repository.*
+
 Today, you choose or write the scene. Tusunsun does not promise to infer arbitrary work and automatically
 assemble everything it needs. Essential services and listeners must be initialized explicitly, and lazy loading
 does not mean every module avoids early imports. See the [scene guide](docs/guides/scene-system.md).
@@ -62,6 +68,10 @@ does not mean every module avoids early imports. See the [scene guide](docs/guid
 
 For a ready-to-use coding assistant, consider Pi first. For a single model request, calling its API directly
 may be simpler. This package alone does not provide multi-tenant isolation or durable task scheduling.
+
+![Carrying the whole toolbox versus assembly on demand](assets/why-carry-the-whole-toolbox.jpg)
+
+*Conceptual comparison: a typical carry-everything setup on the left, assembly on demand on the right. No measured numbers from this repository are shown.*
 
 ## Compared with Pi
 
@@ -85,6 +95,12 @@ The default `event-sink` validates/counts events without persisting them. See [S
 
 ## Architecture and shipped components
 
+![One-page system architecture](assets/architecture-overview.jpg)
+
+*One-page architecture: entry points, scene assembly, the 8-file kernel and plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is `v0.20.0`; see [Microkernel Architecture](docs/architecture/microkernel.md). Plugin groups are illustrative; run `tusunsun plugins` for the exact list.*
+
+**The figures ship with the repository only — they are not part of the npm package** (the README is in the package, the images are not, so they render as placeholders on npm).
+
 ### Architecture
 
 **Core:**
@@ -100,6 +116,10 @@ The default `event-sink` validates/counts events without persisting them. See [S
 - **Scene Schema System** — each scene declares capabilities + useCases, AI can recommend switching
 - **Three-tier Memory implementation** — Ying Mini (instant + daily JSONL + KV long-term); initialize its service explicitly in a scene
 - **Prompt Pipeline** — template variables → memory injection → tool descriptions → format standardization
+
+![The six semantics and the three-step path for a new capability](assets/grow-abilities-not-chaos.jpg)
+
+*The six semantics stay put while capabilities grow at the edges: follow the semantics → implement the plugin → verify the boundary.*
 
 **Security:**
 - **Workspace path checks** — shipped file tools reject absolute paths and workspace escapes; `tool-bash` remains unrestricted. This is not an OS sandbox
