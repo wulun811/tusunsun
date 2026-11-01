@@ -1,0 +1,72 @@
+{
+  "schema": "tusunsun.perf.system-bench/v1",
+  "stage": "context",
+  "meta": {
+    "stamp": "2026-10-31T14-13-10",
+    "git_head": "fcb5725",
+    "node": "v22.22.2",
+    "platform": "linux 7.0.0-34-generic",
+    "cpu": "Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz",
+    "cpu_count": 12,
+    "total_mem_gb": 15.5,
+    "opencode": "1.18.29",
+    "truthfulness": "本文件只报本机实测；换机器/换版本必须重跑，不得引用别处的绝对值"
+  },
+  "config": {
+    "method": "模型端点指向本地 recorder，抓第一回合真实请求体；不调模型、不联网",
+    "est_tokens_rule": "统一口径：CJK 1.5 字符/token，其余 4 字符/token（与 context-manager 同）",
+    "caveat": "两边工具集不同（土行孙 10 个文件类工具；opencode 含 task/skill/webfetch 等），比的是装配税不是能力"
+  },
+  "rows": [
+    {
+      "id": "tusunsun:gateway",
+      "ok": true,
+      "requests_seen": 1,
+      "body_chars": 5164,
+      "system_chars": 676,
+      "tools_count": 10,
+      "tools_chars": 4360,
+      "messages_count": 2,
+      "tool_names": [
+        "tool-bash",
+        "tool-cp",
+        "tool-list",
+        "tool-mv",
+        "tool-read",
+        "tool-rm",
+        "tool-stat",
+        "tool-todo",
+        "tool-validate",
+        "tool-write"
+      ],
+      "est_tokens_body": 1300,
+      "est_tokens_system": 170,
+      "est_tokens_tools": 1094
+    },
+    {
+      "id": "opencode:run",
+      "ok": true,
+      "requests_seen": 2,
+      "body_chars": 30740,
+      "system_chars": 9604,
+      "tools_count": 10,
+      "tools_chars": 20812,
+      "messages_count": 2,
+      "tool_names": [
+        "bash",
+        "edit",
+        "glob",
+        "grep",
+        "read",
+        "skill",
+        "task",
+        "todowrite",
+        "webfetch",
+        "write"
+      ],
+      "est_tokens_body": 7686,
+      "est_tokens_system": 2401,
+      "est_tokens_tools": 5203
+    }
+  ]
+}

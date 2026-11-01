@@ -13,8 +13,8 @@
 
 - [快速开始](guides/quick-start.md) — 5 分钟跑起土行孙
 - [配置指南](guides/configuration.md) — 详细配置说明
-- [多会话：每个会话在自己的目录里干活](../README.md#让每个会话在自己的目录里干活) — 会话级工作目录、声明方式、持久化与边界
-- [Cell：有身份的执行单元](../README.md#cell有身份的执行单元) — 单 Cell / 双 Cell 示例与明确不支持的项
+- [多会话：每个会话在自己的目录里干活](guides/quick-start.md#多个项目同时干活会话级目录) — 会话级工作目录、声明方式、持久化与边界
+- [Cell：有身份的执行单元](architecture/cell-rfc.md) — 单 Cell / 双 Cell 示例与明确不支持的项
 - [**Cell 接入指南**](guides/cell-integration.md) — 外部集成方照着做：五道门的正确写法、`close()` 的三种答案、限流与配置路径、重启语义
 - [插件开发](guides/plugin-development.md) — 开发自己的插件
 - [场景系统](guides/scene-system.md) — 理解场景机制
@@ -22,6 +22,7 @@
 ## 架构
 
 - [微内核架构](architecture/microkernel.md) — 核心设计
+- [系统架构说明（0.20.0）](architecture/system-architecture.md) — 全部 50 个插件、10 个场景配方与三条端到端路径
 - [Cell RFC](architecture/cell-rfc.md) — Cell/Task/Session/Core/Process 的边界、合同、状态机与威胁模型
 
 ### 内核边界与接点
@@ -57,6 +58,7 @@
 
 - [**API 兼容性基线（v0.11.0 → v0.14.0）**](quality/api-compatibility.md) — 33 个公开方法无删改、事件无改名；加性字段与破坏性变更逐条列出
 - [**性能基线**](../verification/perf/README.md) — 本机实测与量法；该目录不进 npm 制品，需 clone 源码检出查看
+- [**系统级基准 2026-10-31**](quality/system-bench-2026-10-31.md) — 启动 / 常驻 / 每回合上下文 / 同机密度的对照实测
 - [压力测试方案](quality/stress-test-plan.md) — 分层、指标口径、硬门禁与判据
 - [压测基线 2026-10-20](quality/stress-baseline-2026-10-20.md) — 可复现的性能数字
 - 历史版本的评审记录、发布判定与内部台账不随公开仓发布；当前状态以 [README](../README.md) 与 [CHANGELOG](../CHANGELOG.md) 为准。

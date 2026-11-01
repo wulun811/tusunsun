@@ -71,7 +71,7 @@
 |------|------|--------|------|
 | `systemPrompt` | string | `null` | 自定义系统提示词 |
 | `maxTurns` | number | `10` | 最大对话轮数 |
-| `workDir` | string | `~/.tusunsun/workspace` | **相对路径的默认基准**（相对路径从这儿算起）。会话可以声明自己的目录来覆盖它（见下节 `workspaces` 与 README「让每个会话在自己的目录里干活」），没声明就一直是它；要求文件工具参数为工作区相对路径，绝对路径与越界会拒绝；**不是 OS 沙箱**，`tool-bash` 不受此边界约束。可用 `TUSUNSUN_WORK_DIR` 覆盖 |
+| `workDir` | string | `~/.tusunsun/workspace` | **相对路径的默认基准**（相对路径从这儿算起）。会话可以声明自己的目录来覆盖它（见下节 `workspaces` 与《快速开始》的「多个项目同时干活」），没声明就一直是它；要求文件工具参数为工作区相对路径，绝对路径与越界会拒绝；**不是 OS 沙箱**，`tool-bash` 不受此边界约束。可用 `TUSUNSUN_WORK_DIR` 覆盖 |
 
 ### workspaces
 

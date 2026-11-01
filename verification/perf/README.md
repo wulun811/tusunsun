@@ -61,3 +61,10 @@ node verification/perf/bench.mjs      # 约 2 秒，输出 JSON
 另外还踩了两个「产品对我错」的门：`workspace_not_allowed`（`create` 需要 `trusted:true`）、
 `task_scope_required` / `task_not_active`（Cell 身份不是任务票据，任务外派发一律拒）。
 它们都不是缺陷，是已经过七轮复审的那几道边界在正常工作。
+
+## 4. 系统级基准（另见）
+
+进程内微基准量的是派发与生命周期；启动、常驻、每回合固定上下文与同机密度是另一层问题。
+在 Linux 源码检出上运行 `node verification/perf/system-bench.mjs`（约 4 分钟，离线）与报告
+[`docs/quality/system-bench-2026-10-31.md`](../../docs/quality/system-bench-2026-10-31.md)
+给出 2026-10-31 的同机对照；原始 JSON 在 `results/2026-10-31T14-13-10/`。

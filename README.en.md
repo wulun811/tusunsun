@@ -1,561 +1,328 @@
-# Tusunsun (土行孙)
+# tusunsun
 
+> ### Shape-shifting powers; moving unseen beneath the ground.
 > **A semantic microkernel for LLM-native agents.**
 
-> **Let your Agent change with the work.**
+**Load what the job needs; change the job and the capabilities follow.**
+**Many plugins, one set of six semantics; organs stay fresh, the kernel stays put.**
+**Autonomous in intent, bounded in execution; claims backed by evidence, unknowns never hidden.**
 
-Sometimes you just want to chat. Next you need to read files, change code, or bring in your own business tools.
-Different work calls for different capabilities.
+**tusunsun is a semantic microkernel built for LLM agents.** It does not think for the model, and it does not try to ship every capability up front. It provides a small, stable execution base so an agent can assemble models, tools, memory and policies per task — while every part still obeys the same execution rules.
 
-Tusunsun organizes them into **scenes**: describe what a kind of work needs, start the essential components,
-and load suitable capabilities when they are called. One small kernel can support different Agent setups.
-
-Start with the included chat, coding or gateway scene, then add your own tools or replace an adapter.
-**Assemble by scene. Load on demand. Adapt as the work changes.** That is why Tusunsun uses a microkernel and plugins.
-
-This is a **Developer Preview** for developers. The current package runs a local conversational Agent with
-file tools, accessible through CLI, a web UI, HTTP/SSE and WebSocket.
-
-This document describes the **current release** only: what it is, how to use it, and where the boundaries are.
-Changes between releases live in [CHANGELOG](CHANGELOG.md); design rationale in [ADR](docs/adr/).
-
-## Run it first: no key, no network
-
-Requires Node 22+. **No network needed to install dependencies**: zero npm runtime dependencies, and the
-third-party `ws` is vendored in `vendor/`.
-
-```bash
-node tusunsun.mjs --version      # print the version
-node tusunsun.mjs plugins        # which plugins this package can discover
-node tusunsun.mjs scene list     # the 10 scene recipes
-node tusunsun.mjs start          # start the local gateway (default port 9002)
-```
-
-All four work without an API key: the kernel, plugins, scenes and file tools load and list normally.
-To install the `tusunsun` command, see "Installation" below; to connect a model, see journey ②;
-to check which command needs a key, see the command table.
-
-## Why Tusunsun
-
-An Agent can keep accumulating tools, channels and policies. Any one job may need only a few of them.
-Tusunsun starts with a practical question: **what capabilities should this piece of work bring along?**
-
-- **Group them into a scene.** A chat scene prepares a model and sessions; a gateway or coding scene can include file tools. Write your own scene to reuse a particular combination.
-- **Start essentials, call in the rest.** Scenes distinguish eager and on-demand plugins. Capability calls can trigger lazy loading. Some lazy-loaded plugins can be recycled when idle and loaded again later.
-- **Change the setup as the work changes.** Add a business tool, replace a model or session adapter, or revise a scene without putting every policy into the kernel.
-
-The microkernel lives in `src/core/` (its line budget is stated once, under Design Principles), excluding plugins and tools.
-Zero npm runtime dependencies and vendored `ws` support offline tarball installation; model connectivity is separate.
-These engineering choices support the design, without establishing better model quality or lower resource use.
-
-![A small kernel and local edits](assets/small-core-easier-change.jpg)
-
-*Conceptual comparison: a typical heavily integrated framework on the left, a small kernel plus plugin boundaries on the right. The bars and ranges indicate direction only; they are not measurements from this repository.*
-
-Today, you choose or write the scene. Tusunsun does not promise to infer arbitrary work and automatically
-assemble everything it needs. Essential services and listeners must be initialized explicitly, and lazy loading
-does not mean every module avoids early imports. See the [scene guide](docs/guides/scene-system.md).
-
-## When to use it
-
-| Need | What Tusunsun supplies | What you still build or verify |
-|---|---|---|
-| Several kinds of work on the same base | Scene-defined combinations of eager and on-demand components | Scene configuration, validation and deciding when to switch |
-| Your own scripts and tools in a dedicated assistant | Tool registration, capability routing, replaceable adapters | Domain logic, permissions and side effects |
-| An Agent behind a desktop tool or web app | HTTP/SSE and WebSocket, persisted sessions, file tools | Client integration, model configuration, deployment |
-| Control over how capabilities load and unload | Small kernel, plugin lifecycle and idle recycling | Your policy and task-level evaluation |
-| Distribution on a restricted network | Self-contained package and offline installation gate | Node/npm; a separate local model service for offline inference |
-
-For a ready-to-use coding assistant, consider Pi first. For a single model request, calling its API directly
-may be simpler. This package alone does not provide multi-tenant isolation or durable task scheduling.
-
-![Carrying the whole toolbox versus assembly on demand](assets/why-carry-the-whole-toolbox.jpg)
-
-*Conceptual comparison: a typical carry-everything setup on the left, assembly on demand on the right. No measured numbers from this repository are shown.*
-
-## Compared with Pi
-
-[Pi](https://github.com/earendil-works/pi) (formerly `badlogic/pi-mono`) also offers SDK embedding,
-RPC, tools, extension hooks and lifecycle management. Those are shared capabilities, not unique Tusunsun features.
-
-| Choice | Tusunsun today | Pi's documented path |
-|---|---|---|
-| Starting point | Choose a scene for the work, assemble its capabilities on the same kernel; a local gateway is included | Interactive Agent plus SDK/RPC integration |
-| Customization surface | Scene lists of eager/on-demand components plus Core events, commands, services and capabilities | Agent sessions, tools, extension hooks and resources; lower-level runtime packages also exist |
-| Distribution tradeoff | Node ≥ 22; zero npm install dependencies, vendored `ws`; verified platform scope below | Its own installation/dependency scheme; no unmeasured size or performance ranking here |
-| Reason to choose | You want different setups for different work, with assembly and loading mechanisms you can read and change | You want to build on Pi's interaction, model integration or SDK/extension contracts |
-
-Pi's current repository also includes Chord and experimental Pi Durable. It is inaccurate to describe Pi
-as terminal-only or to claim that persistence or hot reload is unique to Tusunsun. Persisted sessions in
-Tusunsun do not establish task recovery. See [comparison and sources](docs/positioning-and-pi.md), checked 2026-10-20.
-
-**Scope:** trusted-local-only. No guarantee of safe untrusted-code execution, strong isolation or exactly-once
-side effects. Plugins run with host permissions; file-tool path checks do not constrain `tool-bash`.
-The default `event-sink` validates/counts events without persisting them. See [SECURITY.md](SECURITY.md).
-
-## Architecture and shipped components
+"Shape-shifting" means a unit of work swaps its capability set as the task changes. "Moving unseen" means carrying as little unrelated machinery as possible. **Work can vary endlessly; the kernel does not have to grow with it.**
 
 ![One-page system architecture](assets/architecture-overview.jpg)
 
-*One-page architecture: entry points, scene assembly, the 8-file kernel and plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is `v0.20.0`; see [Microkernel Architecture](docs/architecture/microkernel.md). Plugin groups are illustrative; run `tusunsun plugins` for the exact list.*
+*One-page architecture: entry points, scene assembly, the 8-file kernel and its plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is the `0.20.0` public release.
+The itemised list (all 50 plugins) is in [System architecture](docs/architecture/system-architecture.md).*
 
 **The figures ship with the repository only — they are not part of the npm package** (the README is in the package, the images are not, so they render as placeholders on npm).
 
-### Architecture
+**Start with the smallest scene (no API key, no network):**
 
-**Core:**
-- **Event Bus** — `core.emit()` / `core.on()` for fact broadcasting
-- **Command Bus** — `core.command()` for request-response with timeouts
-- **Capability Registry** — `registerCapability()` / `callCapability()` for service discovery
-- **Service Registry** — `registerService()` / `getService()` for dependency injection
-- **Middleware Pipeline** — `use(stage, fn)` for cross-cutting concerns
+```bash
+node tusunsun.mjs --version
+node tusunsun.mjs scene list
+node tusunsun.mjs scene show chat
+```
 
-**Dynamic Management:**
-- **Three Daoists Scheduler** — Jieyin / Duobao / Zhunti, DAG dependency parsing + 7-step safe uninstall
-- **Plugin Context Protocol (PCP)** — plugins declare `context` to become AI-aware, with lazy two-phase injection
-- **Scene Schema System** — each scene declares capabilities + useCases, AI can recommend switching
-- **Three-tier Memory implementation** — Ying Mini (instant + daily JSONL + KV long-term); initialize its service explicitly in a scene
-- **Prompt Pipeline** — template variables → memory injection → tool descriptions → format standardization
+> **Release status**: `0.20.0` was the first public open-source release and is
+> **not published to the npm registry** (`npm view tusunsun` returns 404 — install from source or
+> GitHub). This is a **Developer Preview for trusted local environments**; it does not promise
+> untrusted-code isolation, cross-process exactly-once, or production readiness on every platform.
+
+---
+
+## 01 · Radical decoupling: why carry the whole toolbox to do one small thing?
+
+Suppose you only want an agent to read a few files and write a report. It needs file reading, search and output. Nothing else.
+
+In a heavily integrated assembly, even a simple task can drag along tools, adapters, dependencies and context it will never touch. **Being able to do a lot is not the same as needing to carry a lot.**
+
+tusunsun's choice: **split capabilities apart, assemble on demand.**
+
+- Pure conversation → the lightweight `chat` scene (3 plugins);
+- Code work → file and coding tools (`coding`: 9 plugins plus 1 lazy);
+- More capability → add the plugins to the scene (`gateway` declares 28 plugins in total, one optional);
+- Lazy-friendly components load on first use (none of the 10 tool plugins under `plugins/tools/` is loaded by default).
+
+| Design question | What tight integration can cost | tusunsun's choice |
+| --- | --- | --- |
+| Capabilities this task never uses | Load, maintenance or context cost anyway | The scene declares what it needs; the rest stays optional |
+| Switching to a different kind of work | Many features entangled in one runtime | Switch scene, or edit the assembly list |
+| More units of work on one machine | Per-unit baseline cost grows with the integration | Keep each unit's capability burden small |
+| Adding a capability | Easily perturbs existing module relationships | Extend a plugin behind an agreed contract |
+
+![Carrying the whole toolbox versus assembly on demand](assets/why-carry-the-whole-toolbox.jpg)
+
+*Conceptual comparison: "carry the full toolbox every time" on the left, assembly on demand on the right. The original artwork carried four numeric read-outs (`8.2s / 0.9s`, `120K / 12K`, `70% / 12%`, `1× / 8×`); nothing in this repository can produce or support them, so that strip was cropped out — the figure keeps the qualitative contrast and prints no false precision.*
+
+**The point of decoupling is not to make the agent do less — it is to make every job lighter.** That is also where we want to start if a single machine is to host more independent units of work; the actual density still has to come from like-for-like benchmarks.
+
+## 02 · The six-semantics microkernel: capabilities split apart, so how does anything stay consistent?
+
+Splitting tools into plugins is easy. The hard part is this: as plugins multiply and work shapes keep changing, **who guarantees that authority, execution, state and results still obey one set of rules?**
+
+tusunsun does not define its core by today's feature list. It starts from the facts that recur every time an agent executes work, and abstracts them into six stable semantics:
+
+| Semantics | The question it answers |
+| --- | --- |
+| **Authority** | Who really owns this capability? Who is allowed to use it? |
+| **Contract** | What must a call satisfy? What does the result promise? |
+| **Invocation** | Did the request actually enter execution? When does it truly end? |
+| **Transition** | How may runtime state legally change? |
+| **Evidence** | Which facts actually happened? Which are still unknown? |
+| **Reconciliation** | On failure, partial completion or unknown outcome — what happens next? |
+
+These are **not six Managers you install**. They are six classes of constraint the whole runtime obeys, implemented by mechanisms already inside the small Core plus explicit boundaries on the surrounding components.
+
+```mermaid
+flowchart TB
+    L[LLM / human / upper system] --> W[Cell and task / Scene recipe]
+    W --> P[Assembled on demand: model · tools · memory · safety policy]
+    P <--> K
+    K["tusunsun Core<br/>Authority · Contract · Invocation<br/>Transition · Evidence · Reconciliation"]
+    P --> R[Results / state / receipts]
+    R --> L
+    style K fill:#E1F8EE,stroke:#00A982,color:#153F35,stroke-width:2px
+    style P fill:#FFF0D7,stroke:#F7A23A,color:#573E23
+    style W fill:#EEE9FF,stroke:#8E76DB,color:#34266A
+```
+
+**One very practical rule: a wait timeout does not mean the tool has stopped.**
+
+An LLM kicks off a file write and then waits too long. The caller may stop waiting, but the write that already started may still be running. tusunsun separates "the waiter timed out" from "the real execution ended". It will not disguise an unknown outcome as a safe failure, and it will not blindly retry without checking.
+
+That is what a semantic kernel buys you: not just an entry point, but an honest answer to **"who ran it, how far did it get, and what actually happened?"**
+
+### Adding a capability — what should change?
+
+In a tightly coupled design, one new capability can drag in scheduling, permissions, state, error handling and the tool interface. The maintenance cost lives in those cross-relationships, not in the plugin itself.
+
+In tusunsun, if the new capability can be expressed with the existing semantics, you work along a much more local path:
+
+**Define the capability contract → implement the plugin → add it to a scene → verify permissions and execution bounds.**
+
+You should not need a new special case in the Core just because you added a tool.
 
 ![The six semantics and the three-step path for a new capability](assets/grow-abilities-not-chaos.jpg)
 
 *The six semantics stay put while capabilities grow at the edges: follow the semantics → implement the plugin → verify the boundary.*
 
-**Security:**
-- **Workspace path checks** — shipped file tools reject absolute paths and workspace escapes; `tool-bash` remains unrestricted. This is not an OS sandbox
-- **Dangerous-command hard block (always on)** — built into the executor, independent of which
-  scene you picked: reading system credentials, tool-level outbound network, block-device writes,
-  fork bombs and `rm -rf` are rejected outright (`Y024`).
-- **Irreversible-operation gate (always on)** — everyday-but-irreversible operations (`rm -r`,
-  `rm *.js`, `find -delete`, `git reset --hard`, `git clean -fdx`, `truncate`, `shred`, `> clobber`)
-  are not rejected, but the first call does **not** execute: the kernel measures the blast radius
-  itself (recursive file count, whether it leaves the workspace) and requires the caller to restate
-  the measured number. A mismatch is refused with the real figure echoed back (`Y025`). This is an
-  attention gate, not a security boundary — it stops "didn't realise how much this deletes".
-- **Kunxiansuo local (shipped)** — FileGuard (sensitive paths + symlink escape) + circuit breaker
-  + rate limit + result redaction. Enabled by `gateway` and `coding` — every
-  scene that assembles tools able to delete or overwrite; pure-conversation scenes (`chat`,
-  `gateway-lite`) do not load it. `agent-platform` lists both `tool-*` and `kunxiansuo-local`
-  under `optional` (inert, not assembled), so it starts with neither tools nor a fence —
-  promote them together if you want them. Deliberately **not** included: the ruler (anchor tamper-proofing
-  — it guards the fence's own files, and this project rewrites them continuously, so the anchors
-  would be re-signed on every upgrade), the reputation scorer (needs Qiankun Mirror's read-only DB).
-- **Qiankun Mirror integration** — **not included in this package** (event mapping / P0 push /
-  anchor tamper-proofing / reputation scoring belong to Kunxiansuo full, under the commercial license)
+**Capabilities grow at the edge; order is kept underneath.**
 
-**Tools & Channels:**
-- **10 file tools (a subset of Baobaonang)** — read / write / bash / list / cp / mv / rm / stat / todo / validate
-- **Downstream tool suites** — not included; do not infer their capabilities from this package
-- **No external messaging channel is enabled by default** — implement and wire an adapter using the examples
+## 03 · Readable and changeable: a kernel small enough to actually understand
 
-## Quick Start
+The thing developers fear is not volume — it is **not knowing what else to read and what else to break** for a one-line change. That goes double for LLMs: irrelevant source, tool descriptions and implicit dependencies eat the limited working context.
+
+tusunsun keeps long-lived responsibilities in a small kernel and puts fast-moving business capability into plugins and scenes.
+
+| Engineering fact (measured on 0.20.0) | Value |
+| --- | --- |
+| Core size | **4,889 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
+| External npm runtime dependencies | **0** |
+| 0.20.0 tarball | **436 files / ~1.80 MB** (measured with `npm pack`) |
+| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,252 lines total |
+| Bundled third-party code | Yes — `ws` (18 files) and `liuhe-lite` (43 files) ship with provenance and per-file hashes. "No install-time dependencies" is **not** the same as "no third-party code" |
+
+> Line-count convention: the **microkernel is 4,889 lines** across 8 files; the enforced budget is
+> **core ≤ 4889 lines** — raising it requires the approval process in ADR-10.
+
+None of this means the whole repository is 4,889 lines, and it does not mean plugins must be short. **What is small is the stable core — not the imagination of the ecosystem.**
+
+When a plugin misbehaves, start from its declaration, lifecycle, call contract and execution receipt. When a capability must change, prefer adjusting the plugin or the scene over touching the control plane.
+
+**For the full layering, all 50 plugins, the 10 scene recipes and three end-to-end paths, see
+[the system architecture note](docs/architecture/system-architecture.md).**
+
+![A small kernel and local edits](assets/small-core-easier-change.jpg)
+
+*Qualitative comparison: how much source you read, how many places you touch, the impact radius and the debugging cost — the four bars indicate direction only, carry no scale, and are not benchmarks.*
+
+**We want humans to be able to read it, and LLMs too — easy to extend, easy to audit.**
+
+## 04 · Solid: not "the tests pass", but "errors cannot rewrite the rules"
+
+Agents hit anomalies: tools throw, calls time out, plugins reload, state lingers, requests repeat, execution only partly completes. Real stability is not wrapping all of that up as "success" — it is making the system keep obeying its rules precisely when things go wrong.
+
+Examples:
+
+- **Same name is not the same right**: a capability name never substitutes for the real owner and credential.
+- **Timeout is not termination**: a waiter leaving does not erase execution still in flight.
+- **An event is not a committed fact**: an observer failing may not rewrite committed state.
+- **Successful execution is not acceptance**: artefacts and acceptance need independent evidence.
+
+tusunsun builds invariants, contracts, positive and negative examples and regression tests around the six semantics. Design review uses the "four questions and one cross-check" method to pin down authority, source of truth and boundaries, and higher-risk changes get formal constraints and verification where appropriate. **The method is not the proof; re-runnable counterexamples and checkable results are.**
+
+Measured on `0.20.0` (Linux x64 / Node 22.22.2):
+
+| Check | Public source checkout | npm artifact (unpacked) |
+| --- | ---: | ---: |
+| Unit tests | **1,505 / 1,505 pass / 0 fail / 0 skip** | **1,505 total / 1,495 pass / 0 fail / 10 skip** |
+| Integration | **63 / 63** | **63 / 63** |
+| Smoke | **2 / 2** | **2 / 2** |
+| Counterexample probes | **27 probes all rc=0** | same (probes ship with the package) |
+| Release gate | **PASS 42 / FAIL 0 / SKIP 0 / NOT_RUN 2** (full evidence tree) | **PASS 32 / FAIL 0 / SKIP 4 / NOT_RUN 7** (no all-green sign-off) |
+
+**Why the artifact form does not sign off as all-green**: the artifact ships without `verification/`, `.github/` and `package-lock.json`, so the 10 skipped unit tests, 4 SKIPs and 7 NOT_RUNs **each carry a named reason** and none is counted as a pass. The two numbers answer two different questions and never stand in for each other.
+
+> The gate tuple comes from the **development-line evidence tree with the full `verification/`**; a public source checkout missing a few evidence scripts records those items as SKIP / NOT_RUN instead of counting them as PASS. Unit, integration, smoke and probe counts are from the public tree.
+
+These are measurements of **one version in one environment**. They do not mean every platform, every model and every security property has been formally proven.
+
+## 05 · Safety: make the LLM think one step further, and make over-reach impossible to talk past
+
+Ask an agent to "clean up temp files". It proposes a recursive delete — but does it remove three caches, or the whole project?
+
+"Please be careful" in a prompt is not enough. tusunsun splits risk handling across layers:
+
+**One layer is execution eligibility.** A call must pass the applicable identity, capability and permission checks; an unauthorised call is refused before it reaches the real tool. A Cell's effective capabilities are further constrained by host policy, its CellSpec and the current Task.
+
+**Another layer is an attention gate for dangerous operations.** For operations that cannot be undone, the tool layer can first measure the blast radius and return a confirmation question, requiring the caller to state necessity, scope, recoverability and the affected targets before proceeding. Commands that are explicitly forbidden are hard-rejected.
+
+**The Y025 confirmation is attention, not human approval and not a sandbox**: it first asks the caller to see the blast radius. Whether to continue is the caller's decision from what is visible, and the executor still has the final say.
+
+Finally, **receipts must separate intent from fact**: the model saying "I deleted it" is not the same as the files having been removed as intended; and if a side effect partly happened, it cannot simply be reported as "failed, nothing to do".
+
+One boundary has to be stated plainly: **tusunsun's permission gate is logical control, not an OS-level sandbox.** Trusted in-process plugins and an unrestricted `tool-bash` cannot be treated as isolated untrusted code, and the dangerous-operation machinery does not guarantee stopping a malicious tool that already has execution rights. The primary scope today is trusted local environments.
+
+**Give the LLM freedom to act, and give every action an explicit boundary and an honest record.**
+
+## 06 · Cell: today's smallest unit of work, tomorrow's more general one
+
+An agent should not be permanently welded to one fixed capability set. And looking further out, work will not always be done by a single agent.
+
+So tusunsun introduces **Cell**: an execution subject with its own identity, work boundary, capability view and lifecycle. It can take a task, execute, deliver and close — and **a Cell is not a Task, not a Session, and not another name for the Core.**
+
+Today you can run a single Cell, and demonstrate two-Cell work plus failure reclamation with **two independent processes**:
+
+```bash
+node examples/cells/single-cell.mjs
+node examples/cells/dual-cell.mjs
+node examples/cells/dual-cell.mjs --fail-b
+```
+
+These examples verify the execution contract without calling a real cloud model.
+
+Further out we want to explore task-driven splitting, dynamic composition, cross-device collaboration, and eventually robot Cells where each physical unit runs its own kernel. But **autonomous splitting, multiple Cells in one process, distributed exactly-once, and robot hardware deployment are not capabilities this open-source package delivers today**.
+
+**Why define Cell first?** Because whatever the future unit of work looks like — bigger, smaller, running anywhere — it should first be able to answer: who am I, what can I do, what am I doing, and did it work.
+
+## 07 · Performance: as models get faster, the execution base must not become the new bottleneck
+
+When an LLM decision drops from seconds to tens of milliseconds, the framework's extra waiting, assembly and tool-call overhead stops being negligible.
+
+tusunsun aims for **short execution paths, little install burden, assembly on demand**. The numbers come from reproducible tests, not from the word "microkernel".
+
+What follows is a **historical baseline** (i7-8750H / Node 22; previous stress round:
+`docs/quality/stress-baseline-2026-10-20.md`, source checkout only; it is **not** a re-run of this version):
+
+| Metric | Historical measurement |
+| --- | ---: |
+| Cold start to serviceable | **~122 ms** (minimal assembly); **160 ms** (coding scene) |
+| Resident memory | **~65–67 MB** (including the Node runtime and assembled components) |
+| Tool safety decision | **~7.2 µs per call** |
+| Framework overhead in a full chat round trip | **~1.3–4.9 ms** (measured against a locally simulated upstream) |
+
+Different scenes, machines, models and concurrency change these numbers. They also cannot be turned into "N times faster than framework X" or "can host N Cells". What we care about more: **what does each extra capability, and each extra unit of work, actually cost?**
+
+### Same-machine comparison (2026-10-31, N=30)
+
+These numbers were measured on the **development-line `0.20.1` tree** against opencode 1.18.29;
+the public `0.20.0` tree has not been re-run. Both kernels are the same 8 files; the differences are
+public-release comment edits and a Windows scene-path fix (36 bytes net). Keep that premise when quoting.
+
+Method: startup = `spawn → HTTP ready endpoint returns <500`; memory = `VmRSS` 1.2 s after ready;
+context = one real request body captured by a local recorder; density = N independent `gateway`
+processes on one machine. Full method and raw samples are in the
+[system-bench report](docs/quality/system-bench-2026-10-31.md).
+
+| Metric | tusunsun `gateway` | opencode `serve` / `run` |
+| --- | ---: | ---: |
+| Start to serviceable (spawn → HTTP ready <500, p50 / p95) | **153 / 162 ms** | **1205 / 1238 ms** |
+| Resident memory once ready (VmRSS, p50) | **71.4 MB** | **326.9 MB** |
+| Fixed per-turn context (real `prompt_tokens`) | **1,548** | **7,347** |
+| 16 instances on one machine | **1,149 MB total / 71.8 MB each / 0 failures** | not measured |
+
+The floor (`node -e ""`) is **27 ms** — subtract it and the framework tax is **126 ms vs 1179 ms**.
+"Real `prompt_tokens`" means the captured request body was replayed once against `deepseek-v4.1-flash`
+and read back from `usage`; the estimator was within 16% and 4% respectively, and both numbers are in the report.
+
+Re-run on a Linux source checkout: `node verification/perf/system-bench.mjs --no-opencode` (tusunsun only);
+the opencode comparison needs opencode 1.18.29 installed. The script and raw JSON ship with the source checkout,
+not the npm package.
+
+**What these numbers may not be used for**: not "8× faster" (the two capability surfaces differ by an
+order of magnitude — opencode carries a TUI, LSP, MCP and a session store), not "8× density" (the other
+side was not measured, and 327 MB per instance would take this machine down first), and not "70% less
+resident memory" (the relative gap is 78%, but that counts the features the other side actually performs).
+They are the assembly tax on **one machine under one external criterion**; re-run before quoting.
+
+## 08 · Start from a small kernel, assemble your own agent
+
+tusunsun is not a finished assistant with all the tools pre-picked. It gives you **composable foundations**: start from `chat`, `coding`, `gateway`, `cell` and adjust models, file tools, memory, safety and business plugins as needed.
+
+Code-operating capability such as `liuhe-lite` is an organ that evolves on its own, not a responsibility the Core should carry forever.
 
 ### Install
 
-This package is **not published to npm** (`npm view tusunsun` finds nothing), so start from a checkout or
-a complete tarball you already have. A repository URL or package name is not proof of a release.
-
-```text
-node tusunsun.mjs --version
-npm pack
-npm install -g --offline ./tusunsun-<version>.tgz
-tusunsun --version
-```
-
-Use the exact filename printed by `npm pack`, which changes with the version. This avoids stale packages
-and shell-dependent wildcard expansion. Node.js 22 or newer and npm must already be available. The checkout runs
-without installing third-party runtime dependencies. The default model is `kimi-k2.5` at
-`https://coding.dashscope.aliyuncs.com/v1`; explicitly set your endpoint and model:
-
-```text
-node tusunsun.mjs config set model.baseUrl https://your-endpoint.example/v1
-node tusunsun.mjs config set model.apiKey YOUR_MODEL_KEY
-node tusunsun.mjs config set model.model YOUR_MODEL_NAME
-node tusunsun.mjs config set agent.workDir /absolute/path/to/project
-```
-
-On Windows, use your project's absolute Windows path. File tools accept paths relative to that workspace
-and reject absolute paths and escapes. Shell tools are unrestricted. Non-loopback model endpoints require
-a model key; loopback endpoints may run without one. Gateway credentials (`gateway.apiKey`) are separate.
-
-### Start Gateway
+The package is **not published to the npm registry** (`npm view tusunsun` returns 404), so there is no
+one-line `npm install -g` path today. Two ways that actually work:
 
 ```bash
+# 1) Run straight from the repository
+git clone <repo> && cd tusunsun
+node tusunsun.mjs scene list
+
+# 2) Build a tgz and install that
+npm pack                      # produces tusunsun-0.20.0.tgz
+npm install -g ./tusunsun-0.20.0.tgz
+```
+
+Without a global install, replace `tusunsun` with `node tusunsun.mjs`.
+
+### Connect a model
+
+The **default model name is `kimi-k2.5`** (the fallback in `plugins/model-openai.js`, overridable by
+config). A real model needs an OpenAI-compatible endpoint, a model name and an API key.
+
+**What happens without a key**: offline commands (`--version`, `scene list/show`, the Cell examples)
+keep working; a real chat call returns a **named upstream error** rather than silently becoming an
+empty reply. Scene enumeration and the deterministic examples never touch the network.
+
+In the browser, type the passphrase into the **login box**; it is kept in `sessionStorage` and never
+placed in the URL.
+
+### First steps
+
+With a source checkout or tarball in hand, using Node.js 22:
+
+```bash
+# See which scenes exist and what a scene assembles
+node tusunsun.mjs scene list
+node tusunsun.mjs scene show gateway
+
+# Start the local service (listens on localhost only by default)
 node tusunsun.mjs start
 ```
 
-### Interactive Chat
+To connect a real model, configure the OpenAI-compatible endpoint, model name and API key. Offline checks, scene enumeration and the deterministic Cell examples need no model credentials.
 
-```bash
-node tusunsun.mjs chat
-```
+> **Boundaries**: trusted-local and internal integration are usable; the public OSS Developer Preview
+> artifact is **not published to npm** — use the public `0.20.0` tree. We do not promise
+> untrusted-code isolation, cross-process exactly-once, or production readiness on every platform.
 
-`chat` is provided by `plugins/haotian-lite.js` in this checkout and connects to the running gateway via WebSocket.
-Start the gateway in one terminal, then run chat in another. A chat reply requires a configured, reachable model.
+For more detail see
+[the system architecture note](docs/architecture/system-architecture.md),
+[the scene guide](docs/guides/scene-system.md),
+[the plugin development guide](docs/guides/plugin-development.md),
+[the ADRs](docs/adr/),
+[SECURITY.md](SECURITY.md) and [the core invariants](docs/architecture/core-invariants.md).
+Start from a real task, give it your own capabilities, and help us test whether these semantics hold.
 
-### Status
+---
 
-```bash
-node tusunsun.mjs status
-```
+**Shape-shifting: capability follows the task.**
+**Moving unseen: the foundation stays light enough not to get in intelligence's way.**
 
-### Plugins
-
-```bash
-node tusunsun.mjs plugins
-```
-
-### Config
-
-```bash
-node tusunsun.mjs config show
-node tusunsun.mjs config set <key> <value>
-```
-
-### Scenes
-
-```bash
-node tusunsun.mjs scene list           # List available scenes
-node tusunsun.mjs scene switch <name>        # Preview the assembly changes
-node tusunsun.mjs scene switch <name> --yes  # Save the selected scene; restart the gateway to apply
-node tusunsun.mjs scene show <name>    # Show scene details
-```
-
-### Run profiles (development / production)
-
-| Profile | Trigger | Scene | Assembly |
-|---------|---------|-------|----------|
-| development (default) | plain `start` | `config.activeScene` (default `gateway`) | Model + tools + session; inspect eager/lazy lists with `scene show gateway` |
-| production | `TUSUNSUN_PROFILE=production` / `npm run start:production` | **locked to `base-system`** (9 kernel plugins) | kernel base only: **no model, no chat, no tools** |
-
-The production profile is Linux-only and requires `TUSUNSUN_DATA_DIR` outside the repository.
-Its name is not a claim of full production acceptance.
-
-The production lock is intentional (a frozen minimal assembly that ignores a possibly-tampered
-`config.activeScene`). To get a talking agent there, name the scene explicitly:
-
-```bash
-TUSUNSUN_DATA_DIR=/var/lib/tusunsun npm run start:production -- --scene gateway   # Linux; directory must be writable
-```
-
-When the assembly has no chat capability this package does not pretend to be healthy:
-
-- the startup log prints `no chat capability: 'chat.handle' has no provider …`
-- `GET /health` returns `status: degraded` with a `missing` list (HTTP 200, so liveness probes stay green)
-- `GET /ready` returns **503** when chat capability **or model credentials** are missing (`missing` lists what)
-- `POST /v1/chat/completions` fails **immediately** with 503 and says how to fix it (it does not hang until timeout)
-
-### Control plane & security defaults
-
-| Item | Default | Notes |
-|------|---------|-------|
-| Bind address | `127.0.0.1` | Remote bind requires **explicit** `gateway.allowRemote: true` (or `TUSUNSUN_ALLOW_REMOTE=1`) **and** a non-empty `gateway.apiKey`; otherwise startup is refused (exit code 1) |
-| `/api/*` (control plane) | loopback + same-origin when no key | With `gateway.apiKey` set, every control-plane route requires `Authorization: Bearer <key>` (401 otherwise); cross-origin is 403 even with a valid key; POSTs must be `application/json` (415) |
-| CORS | no CORS headers | Only origins listed in `gateway.corsOrigins` are echoed; the wildcard `*` default is gone |
-| WebSocket auth | subprotocol `tusunsun.token.<base64url>` | Token travels in a **header**, not the URL; `?token=` is kept for compatibility only |
-| State dir / config (POSIX modes) | `0700` / `0600` | `~/.tusunsun` and `config.json` (plaintext keys); config writes are atomic (tmp + rename) |
-| File tools | inside the workspace | `../`, sibling dirs sharing a prefix (`workspace_evil/`), and symlink escapes are rejected (`out_of_bounds`). **Not a sandbox**: `tool-bash` is unrestricted |
-
-With a key configured, open the UI at `http://127.0.0.1:9002/` and type the credential into the **login box**
-(the key button in the top-right corner). It is kept in `sessionStorage` for this tab only, and is sent as an
-`Authorization` header / WebSocket subprotocol — never in the URL, so it does not reach browser history, proxy logs,
-or `Referer` headers. The control plane (`/api/*`) answers `401` until the credential is supplied.
-
-The legacy query form `http://127.0.0.1:9002/?token=<gateway.apiKey>` is still accepted **for compatibility only and is
-not recommended**: a URL leaks into history / proxy logs / `Referer`. The page reads it once, moves it into
-`sessionStorage`, and strips it with `history.replaceState()` — but the value may already have been recorded.
-
-### Exit codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | success |
-| 1 | operation failed (write failure, refused stop, security policy refused startup) |
-| 2 | usage error (unknown command, missing arguments) |
-| 3 | gateway not running (`status` / `stop` / gateway-dependent plugin commands) |
-
-### Platform support (honest boundaries)
-
-| Platform | Status |
-|----------|--------|
-| Linux + Node 22 (v22.22.2) | Supported. **Two checkouts are reported separately and never stand in for each other**:<br>**dev tree** (with `verification/` and `.git`): unit **1509 total / 1509 pass / 0 fail / 0 skip** (`TT_ASSERT_DRAIN=1`); integration 63/63; smoke 2/2; 27 probes all rc=0; release gate **PASS 42 / FAIL 0 / SKIP 0 / NOT_RUN 2** (default repeat 2; the Node 24 run counts as its own item; clean-room offline install and artifact member-by-member consistency both passed)<br>**npm artifact** (`tar xzf tusunsun-0.20.0.tgz`, **measured locally**): unit **1509 total / 1498 pass / 0 fail / 11 skip** (no `.git`, no CI workflows, not root); integration 63/63; smoke 2/2; release gate **PASS 32 / FAIL 0 / SKIP 4 / NOT_RUN 7, exit code 1 (blocking)** — the artifact ships without `verification/` or `.env`, so the 4 SKIPs (including 11 skipped cases in each of the three unit passes) and the 7 NOT_RUNs (3 evidence-directory items, 3 missing-precondition items, 2 foreign platforms) each carry a named reason and **none is counted as a pass**. The gate deliberately does **not sign off as all-green** in artifact form; the same command in the dev tree is 42/0/0/2 with exit 0 — the two numbers answer two different questions and never stand in for each other.<br>real-model chain (free-tier `deepseek-v4.1-flash`, one non-streaming round trip, `usage.cost: 0`) passes locally; a bad credential is rejected by the upstream with 400; stress 31 hard gates all pass |
-| Linux + **Node 24.9.0** | **Measured**: unit 1308/1308 (`TT_ASSERT_DRAIN=1`); release-gate `node-24` item PASS. The run surfaced one Node-24-only defect (a fixture used `rmSync` on a symlink, which throws `ERR_FS_EISDIR` on Node 24; product code uses `unlink`, so the fixture was fixed). See [ADR-12](docs/adr/ADR-12-node-support-matrix.md) §4.1 |
-| Linux + Node 18 / 20 | Dropped (both EOL). `engines` is `>=22`; the old compatibility code is gone |
-| macOS | Not verified (expected to work; not part of release acceptance) |
-| Windows | Node 22.19.0: offline install, npm start, CLI/HTTP/SSE/WebSocket lifecycle verified (12/12 install gate); TUI exits on piped q input. Native console interaction, 8.3 names, UNC, case-insensitivity and Node 24 remain unverified locally. The production profile remains Linux-only. |
-| Network filesystems / crash recovery / exactly-once | Not covered (see Boundaries above) |
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `tusunsun start` | Start gateway in the foreground |
-| `tusunsun stop` | Stop running gateway |
-| `tusunsun status` | Show gateway status (plugins, uptime) |
-| `tusunsun chat` | Interactive terminal chat (provided by the `haotian-lite` plugin; needs `start` first) |
-| `tusunsun tui` | Terminal TUI dashboard (monitor + manage + chat) |
-| `tusunsun config` | View/edit config (show/get/set) |
-| `tusunsun plugins` | List plugin **files** under `plugins/`, each tagged default-assembled / optional / present-but-opt-in |
-| `tusunsun scene` | Scene management (list/switch/show/suggest/expand) |
-| `tusunsun kunxiansuo` | Query Qiankun Mirror (needs Kunxiansuo full; endpoint not in this package) |
-
-A running gateway also exposes, with no extra configuration:
-
-| Entry | Address |
-|-------|---------|
-| Web UI | `http://localhost:9002/` |
-| OpenAI-compatible | `POST http://localhost:9002/v1/chat/completions` |
-| Health | `GET http://localhost:9002/health` |
-
-## Design Principles (Immutable)
-
-> **Scope:** items 1–4 constrain the **microkernel** — `src/core/` (the line count is generated by
-> `scripts/sync-line-docs.mjs` and verified file-by-file by a gate). `plugins/` is the freely replaceable plugin surface and is
-> **not** under a line budget, but the **shipped** plugin set must stay free of external npm
-> dependencies (`npm run check:deps`). Plugins you add yourself are unconstrained; package-wide
-> distribution promises still require separate verification.
->
-> `src/` has two layers: `core/` (under the line budget) and `bootstrap/` (not under it).
-
-1. **Microkernel (`src/core/`) ≤ 4889 lines** — the same number as `CORE_MAX_LINES`; every increase is recorded in ADR-10
-2. **Zero install-time dependencies** — currently **0** npm runtime deps (`ws` ships as a vendored copy under `vendor/ws/`)
-3. **Tarball ~2 MB; ~5.8 MB unpacked** — `test/` and `docs/` are 3.6 MB of the unpacked size; both numbers are stated because they answer different questions
-4. **Node.js ≥ 22** (`engines: >=22`, ADR-12). 22 measured; 24 declared but **NOT_RUN**
-5. **Plugin freedom is infinite** — plugins can use any dependency
-
-## Performance (reproducible numbers)
-
-Tusunsun is built for **fast models that do not exist yet**. When the upstream drops from 2 s to
-50 ms, the framework's own overhead stops being invisible and becomes the bill itself. Being light
-is not a side benefit here — it is the target.
-
-Numbers below come from `npm run test:stress` (i7-8750H / 12 vCPU / Node 22); you can rerun it and
-get the same set on your machine:
-
-| What | Measured |
-|---|---|
-| Cold start to ready (incl. process spawn) | **122 ms** (minimal assembly) / **160 ms** (coding scene, 17 plugins) |
-| Resident memory | **65–67 MB** |
-| Safety check on one tool call | **7.2 µs** |
-| Full tool-execution path (read tool) | **2.4 µs** |
-| **Kernel overhead** in one full chat round trip | **1.3–4.9 ms** |
-| Gateway `/health` throughput | **13.8k req/s** (concurrency 32, loopback) |
-| Live-object drift after 120 s / 87.5M ops | **0.0%** |
-
-**How "kernel overhead" is measured**: run end-to-end against a local mock upstream with
-controlled delay, then subtract the direct-to-upstream time. What remains is everything this
-package contributes to one full round trip. It stays flat as the mock delay goes 0 → 50 → 200 ms,
-which means there is no upstream-coupled wait inside the kernel.
-
-Method, percentile spread and known limits: [stress test plan](docs/quality/stress-test-plan.md)
-and [baseline](docs/quality/stress-baseline-2026-10-20.md). These numbers are hardware-bound;
-**this repository makes no claim of superiority over any peer implementation** — only that it can
-produce them, and that you can reproduce them.
-
-## Multiple concurrent sessions (one kernel, many conversations)
-
-Tusunsun does not start N agent processes. It runs **one kernel serving N sessions** (the global
-concurrency gate defaults to 20). Isolation comes from giving every cross-turn piece of state a
-session dimension, not from process isolation.
-
-**Isolated today** (each has a concurrency test pinning it):
-
-| State | Key |
-|---|---|
-| Conversation history | `sessionId` → its own file |
-| Turns within one session | Serialized per session (the second request queues behind the first and reads the history the first one just wrote) |
-| Working directory | `sessionId` → its own root (see below) |
-| Irreversible-operation acknowledgement | `${sessionId}:${command fingerprint}` |
-| Read-before-write marks | `sessionId` |
-| Audit log / user preferences / circuit breaker | `sessionId` / `chainId` |
-| Tool call quota | `${sessionId}:${tool name}` |
-| Task list (`tool-todo`) | `sessionId` |
-| Context summary | `sessionId` |
-
-### Giving each session its own directory
-
-The default is still `agent.workDir` — **declare nothing and you get the old behaviour**, so
-upgrading never moves your files. Three ways to point a session somewhere else:
-
-```bash
-# 1) Terminal
-tusunsun chat --dir /path/to/repo-a
-
-# 2) OpenAI-compatible endpoint: request header (every SDK has extra_headers)
-curl -s http://127.0.0.1:9002/v1/chat/completions \
-  -H 'X-Tusunsun-Workspace: /path/to/repo-a' \
-  -H 'Content-Type: application/json' \
-  -d '{"session_id":"repo-a","messages":[{"role":"user","content":"read package.json"}]}'
-
-# 3) Request body field (the extra_body shape)
--d '{"session_id":"repo-a","workspace":"/path/to/repo-a","messages":[...]}'
-```
-
-Once declared, that session's **writes, reads, the `Current directory` line in its system prompt,
-blast-radius measurement and read-before-write marks** all use it. Two sessions can work in two
-repositories at once: the same relative path `src/main.js` is a file in repo A for session A and a
-file in repo B for session B.
-
-- **One directory per session**: to move, use a new `session_id` (`409 workspace_conflict`). A
-  session's history belongs to the directory it was produced in; silently moving it makes "where was
-  this session working?" unanswerable.
-- **Refusals are named**: `400` with `workspace_not_found` / `invalid_workspace` / `workspace_not_dir`
-  / `workspace_denied`. No silent fallback, no guessing, and **no `mkdir` on your behalf**.
-- **Local by default**: loopback clients may point at any existing directory; remote clients
-  (`gateway.allowRemote`) must stay inside `workspaces.roots`. Tighter:
-  `workspaces.policy: "rooted"` (even local clients must stay inside), or `"off"` to disable it.
-- **Observable**: `GET /api/sessions` answers "which session is in which directory"; non-streaming
-  responses echo `tusunsun_workspace` — the root that actually took effect, not your input string.
-
-**Bindings are durable, not a cache**:
-
-- Bindings live in `<stateDir>/workspace-bindings.json` (`0600`, atomic write). On restart each one is
-  re-verified and restored — a session whose history survives keeps its working directory too.
-- **A full table refuses new bindings** (`507 workspace_capacity_exhausted`) and **never evicts**:
-  eviction means silently moving a working unit to another project.
-- Deleted directory / re-pointed symlink / narrowed allowlist / corrupted metadata ⇒ that session gets
-  a named refusal (`409 workspace_binding_unavailable`) and **does not fall back to the default root**.
-  Sessions that never declared anything still use the default root (existing deployments unaffected).
-- Inspect and release with `tusunsun workspace list` / `tusunsun workspace release <session_id>`.
-  Releasing a session with a task in flight is refused (`workspace_busy`) unless forced.
-
-**Not isolated yet** (honest boundaries — do not rely on it):
-
-- **This is not a sandbox**: `tool-bash` can still `cd` anywhere and absolute paths are unrestricted.
-  A session's root bounds the *base for relative paths*, not what the model can reach.
-- **No lock on a directory**: two sessions pointed at the same repo will step on each other during
-  `npm install`. That is the filesystem's business, not the framework's.
-- **Default session**: requests without `session_id` land on `rest_api`, so two clients that both omit
-  it share one history and one directory.
-
-So "no interference" holds for conversations, tool quota, safety verdicts, task lists, summaries and
-working directories; it does not hold for filesystem side effects after a successful execution.
-
-## Cells: execution units with an identity
-
-Sessions answer "whose memory and settings are these". **Cells answer a different question: who did this
-work, where was its boundary, and does the result count.** One cell may hold several sessions; they do
-not become several cells.
-
-```text
-Cell ≠ Task ≠ Session ≠ Core ≠ Process
-```
-
-| Concept | What it is |
-|---|---|
-| **Cell** | An execution subject that durably owns identity, state, a work boundary and a capability view, and independently accepts / executes / delivers tasks |
-| **Task** | The work plus its acceptance criteria (may fail, be retried, be reassigned) |
-| **Session** | A working-memory channel *inside* a cell |
-| **Core** | The plugin/capability/event microkernel (not an agent role) |
-| **Process** | The runtime host (v0 is 1 cell : 1 core : 1 process — a **deployment choice**, not the definition) |
-
-Try it (**no API key, no network**):
-
-```bash
-node examples/cells/single-cell.mjs          # one cell: deterministic checks, no model call
-node examples/cells/dual-cell.mjs            # two cells: two independent processes
-node examples/cells/dual-cell.mjs --fail-b   # counterexample: one failure must not turn the run green
-```
-
-Cells need a scene that ships `cell-runtime`: `tusunsun start --scene cell`. Every existing scene
-(`gateway` / `coding` / `chat` / `gateway-lite`) is **byte-for-byte unchanged** — if you do not opt in,
-behaviour is identical to the previous release.
-
-Four things that are easy to misread:
-
-- **Capabilities intersect, and stay enforced at execution time**: effective = host policy ∩ cell spec ∩
-  task requirement. Missing on any side gives `capability_denied`, decided **before** any model call or
-  file write — and a tool the cell never declared is also refused at the tool entry when the model calls
-  it mid-conversation. `permission_mode: read-only` is an execution-time criterion too: every non-read
-  tool returns `permission_denied`.
-- **Execution ≠ acceptance**: `execution_state: succeeded` only means the run finished. An independent
-  acceptor inspects **artifact hashes** and returns `accepted | rejected | inconclusive`. A model saying
-  "tests passed" is not evidence.
-- **Artifacts must be hashed**: a `WorkResult` entry without a 64-hex sha256 is rejected at the contract
-  layer — a self-reported path proves nothing.
-- **`max_steps` / `wall_ms` are enforced**: hitting the wall clock is reported as `timed_out` with an
-  explicit note that side effects were **not** rolled back, instead of pretending a cancel happened;
-  exhausting the step budget is `failed`, not a timeout. Steps are counted per cell session, so other
-  conversations cannot consume a cell's budget.
-
-**Explicitly unsupported** (refused, not merely unplanned):
-
-| Item | Status |
-|---|---|
-| Multiple cells in one process | `runtime.kind: shared_process` → `unsupported_runtime`. Scenes, capability views and event subscriptions are still per-core |
-| Autonomous splitting | `max_children` defaults to 0. Splitting means an upper layer submits a CellSpec and a coordinator approves it — not a syscall a cell makes itself |
-| OS sandbox | No. `tool-bash` is as unrestricted as in any other scene |
-| Distributed exactly-once | Not promised. What is promised: duplicate detection and auditable retries |
-
-See the [Cell RFC](docs/architecture/cell-rfc.md) for the threat model and the full contract.
-
-## Plugin Examples
-
-### Minimal Plugin
-
-```javascript
-export default {
-  name: 'hello-world',
-  version: '1.0.0',
-  async init(core) {
-    core.log('info', 'Hello from plugin!');
-  }
-};
-```
-
-### Channel Plugin
-
-```javascript
-import { ChannelBase } from '../plugins/channel-base.js';
-
-class ChannelMyIM extends ChannelBase {
-  name = 'channel-myim';
-
-  async init(core) {
-    await super.init(core);
-    const config = core.getService('config');
-    this.apiToken = config?.get('channels.myim.token');
-  }
-
-  async sendReply(sender, text, context) {
-    // Send to your IM service
-  }
-}
-
-export default new ChannelMyIM();
-```
-
-### Replacing the model adapter
-
-The shipped implementation is [`plugins/model-openai.js`](plugins/model-openai.js), which handles
-OpenAI-compatible ordinary/streaming calls and tools. Other protocols require an adapter that meets the
-consumer's model service contract; registering a `call()` method alone is not sufficient for the default scene.
-
-## Documentation
-
-- [Positioning and Pi comparison](docs/positioning-and-pi.md)
-- [Plugin Development Guide](docs/guides/plugin-development.md)
-- [Quick Start](docs/guides/quick-start.md)
-- [Configuration](docs/guides/configuration.md)
-- [Scene System](docs/guides/scene-system.md)
-- [Microkernel Architecture](docs/architecture/microkernel.md)
-- [Naming Conventions](docs/reference/naming.md)
-- [Tool Development](docs/reference/tool-development.md)
-
-## Relationship with Qiankun Mirror
-
-This package has local diagnostics and event interfaces, but does not include the full Qiankun Mirror
-integration. The default `event-sink` only validates/counts events and does not persist them. External
-observability requires an adapter and validation; another product's licensing is defined by that product.
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities and our security policy.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-Apache License 2.0
+**Keep the kernel small. Let intelligence take shape.**
