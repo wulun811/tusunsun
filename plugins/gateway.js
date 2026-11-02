@@ -92,6 +92,9 @@ class GatewayPlugin {
     this.addHandler('GET', '/api/sessions', (req, res) => this._handleSessionsGet(req, res));
     // 工具审计的**读取面**：控制面鉴权与其余 `/api/*` 同门（`_guardControlPlane`），
     // 不是新的暴露面。
+    // 上下文读数与手动压缩：控制面同门；会话由调用方指名，没有"列出所有会话"的入口。
+    this.addHandler('GET', '/api/context', (req, res) => this._handleContextGet(req, res));
+    this.addHandler('POST', '/api/context/compact', (req, res) => this._handleContextCompact(req, res));
     this.addHandler('GET', '/api/audit', (req, res) => this._handleAuditGet(req, res));
   }
 
@@ -121,6 +124,59 @@ class GatewayPlugin {
       // 诚实标注：进程内、非持久
       durable: false,
     });
+  }
+
+  /**
+   * `GET /api/context?session_id=<id>` → 该会话的上下文用量与摘要元数据（只读）。
+   * 会话不在本进程（没有内存里的会话）时 404 `unknown_session`：不拿“空数组算出的 0”冒充“没在跑”。
+   */
+  async _handleContextGet(req, res) {
+    const ctx = this.core.getService?.('context');
+    if (typeof ctx?.snapshot !== 'function') {
+      this._sendJson(res, 501, { error: 'context service not loaded', code: 'context_unsupported' });
+      return;
+    }
+    const raw = new URL(req.url, 'http://localhost').searchParams.get('session_id');
+    if (!raw) {
+      this._sendJson(res, 400, { error: 'query "session_id" is required', code: 'session_required' });
+      return;
+    }
+    let id;
+    try { id = assertSessionId(raw); }
+    catch (err) { this._sendError(res, 400, err.message, err.code || 'invalid_session_id'); return; }
+    const snap = await ctx.snapshot(id);
+    if (!snap.messages) {
+      this._sendJson(res, 404, { error: `unknown session "${id}": no history in this process`, code: 'unknown_session' });
+      return;
+    }
+    this._sendJson(res, 200, snap);
+  }
+
+  /** `POST /api/context/compact` {session_id} → 立即压缩一次，回报前/后用量与摘要元数据。 */
+  async _handleContextCompact(req, res) {
+    const ctx = this.core.getService?.('context');
+    if (typeof ctx?.compact !== 'function') {
+      this._sendJson(res, 501, { error: 'context service not loaded', code: 'context_unsupported' });
+      return;
+    }
+    let body;
+    try { body = JSON.parse((await this._collectBody(req, res)) || '{}'); }
+    catch { this._sendError(res, 400, 'invalid JSON body', 'invalid_json'); return; }
+    const raw = body?.session_id;
+    if (!raw) {
+      this._sendJson(res, 400, { error: 'body "session_id" is required', code: 'session_required' });
+      return;
+    }
+    let id;
+    try { id = assertSessionId(raw); }
+    catch (err) { this._sendError(res, 400, err.message, err.code || 'invalid_session_id'); return; }
+    try {
+      this._sendJson(res, 200, await ctx.compact(id));
+    } catch (err) {
+      const code = err?.code || 'compact_failed';
+      const status = code === 'unknown_session' ? 404 : (code === 'summary_unavailable' ? 409 : 500);
+      this._sendJson(res, status, { error: err.message, code });
+    }
   }
 
   /** `GET /api/sessions` → 默认根、策略、白名单、当前绑定（控制面鉴权与 `/api/*` 同门）。 */

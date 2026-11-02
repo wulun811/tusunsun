@@ -129,6 +129,28 @@ await svc.close('c1', { force: true, quiesceMs: 5000 });
 
 有清理未完成时改发 `cell.closing`，带 `cleanup_pending` 与 `inflight`。
 
+### 复用与进程成本（为什么 `close` 之后同 Core 不能再建）
+
+`close` 完成后登记**仍然保留**：同 Core 再 `create` 会得到 `cell_quota_exceeded`。这不是缺陷，
+而是 v0 的隔离不变量 —— 插件状态、场景状态与能力注册表都是**进程级**的，同一个 Core 里换一个
+Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”就从承诺变成了说法。
+
+要省掉“一次任务一个 OS 进程”（实测约 0.8s）的成本，**隔离单元是 Core，不是 Cell**：
+
+| 做法 | 结果 |
+| --- | --- |
+| 同 Core `close` 后重建 | `cell_quota_exceeded`（设计如此） |
+| 同进程新建 Core + 同 stateDir + 同 `cell_id` + **同工作区** | **实测可用**（新插件实例、新会话表、新 `_fenceContext`） |
+| 同 stateDir 上同时两个活 Cell | `state_dir_owned`：一个 stateDir 只能有一个活属主 |
+
+另外两个常被当成“缺接口”的点，已有入口：
+
+- **要状态**：`describe(cellId)` 就是状态面（`state` / `phase` / `active_task_id` / `capability_gate`）；
+- **要停**：`close(cellId, { force: true })` 先撤销执行资格（正在跑的任务会被具名拒），再结算；
+- **`execute` 是阻塞 RPC**：异步化需要 `run_id` + 事件流 + 取消语义，属于下一个接口版本（v0 不提供）；
+- **`_reply` 不落盘**：它以 `_` 前缀标识为进程内私有（不进行为结果信封，也不进 `results.jsonl`），
+  要回读已落盘的结构化结果用 `resultRecords(cellId)`。
+
 ## 2. 任务
 
 ### `accept(cellId, task)` → `Promise<AcceptReceipt>`（同步实现，调用方不必 await）

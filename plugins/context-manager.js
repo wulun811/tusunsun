@@ -360,6 +360,82 @@ class ContextManager {
     return { used, max: this.maxTokens, percent: Math.min(100, Math.round(used / this.maxTokens * 100)) };
   }
 
+  /**
+   * 会话上下文**只读读数**：用量 + 摘要。第 2 参可给 `history`，否则读 `session` 的会话消息；
+   * 不在本进程时 `messages:0`（不凭空造一个空会话）。
+   */
+  async snapshot(sessionId, opts = {}) {
+    const sid = String(sessionId);
+    const history = opts.history || this.core.getService('session')?.getHistory(sid) || [];
+    const usage = this.getUsage(history, this._toolList());
+    return {
+      session_id: sid, used: usage.used, max: usage.max, percent: usage.percent,
+      messages: history.length, strategy: this.strategy, reserve: this.reserveTokens,
+      summary: await this.summaryMeta(sid),
+    };
+  }
+
+  /** 摘要元数据：正文 + 来源范围 + 生成器 + 是否降级（内存版不能回读，所以 `degraded:true`）。 */
+  async summaryMeta(sessionId) {
+    const key = String(sessionId);
+    const cell = this._cellCompaction(key);
+    if (cell) {
+      const rec = await cell.ctx.loadSummary(cell.frozen.cell_id, key).catch(() => null);
+      if (!rec) return { text: '', source_range: null, generator: null, degraded: true, reason: 'no_summary' };
+      const failed = rec.status === 'failed';
+      return {
+        text: failed ? '' : (rec.summary || ''),
+        source_range: rec.source_range || rec.sourceRange || null,
+        generator: rec.generator || cell.frozen.profile?.compaction?.provider || null,
+        degraded: failed, ...(failed ? { reason: rec.reason || 'failed' } : {}),
+      };
+    }
+    const text = this._summaryOf(key);
+    return {
+      text, source_range: null, generator: text ? 'in-memory' : null,
+      degraded: true, reason: text ? 'memory_only' : 'no_summary',
+    };
+  }
+
+  /**
+   * 立即压缩一次：**强制摘要**（不靠 sliding 静默丢轮次），再把裁过的消息写回会话。
+   * 摘不到就不动会话（具名 `summary_unavailable`）—— 手动压缩的意思就是“缩了但没丢”。
+   * 摘要**留在摘要位**、不写进第 0 条 system 消息：写进去下一轮会再注入一次，且一轮轮叠下去。
+   */
+  async compact(sessionId) {
+    const sid = String(sessionId);
+    const session = this.core.getService('session');
+    const history = session?.getHistory?.(sid) || [];
+    if (!history.length) {
+      throw Object.assign(new Error(`unknown session "${sid}": no history in this process`), { code: 'unknown_session' });
+    }
+    const tools = this._toolList();
+    const before = this.getUsage(history, tools);
+    const systemPrompt = history[0]?.role === 'system' ? history[0].content : '';
+    const trimmed = await this.trimMessages(history, systemPrompt, tools, { sessionId: sid, strategy: 'summarize' });
+    const summary = await this.summaryMeta(sid);
+    const dropped = trimmed.length < history.length;
+    if (dropped && !summary.text) {
+      throw Object.assign(new Error('summarization produced no text; refusing to drop history without a summary'),
+        { code: 'summary_unavailable' });
+    }
+    const saved = trimmed.map((m) => (m?.role === 'system' ? { ...m, content: this._stripSummary(m.content) } : m));
+    const changed = saved.length !== history.length || (saved[0]?.content || '') !== (history[0]?.content || '');
+    if (changed) await session.saveHistory(sid, saved);
+    const after = this.getUsage(saved, tools);
+    return {
+      session_id: sid, compacted: changed,
+      messages: { before: history.length, after: saved.length },
+      used: { before: before.used, after: after.used },
+      percent: { before: before.percent, after: after.percent },
+      summary,
+    };
+  }
+
+  _toolList() {
+    return this.core.getService('tool-registry')?.list?.() || [];
+  }
+
   _estimateTokens(text) {
     if (!text) return 0;
     const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length;

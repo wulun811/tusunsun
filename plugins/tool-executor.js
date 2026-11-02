@@ -57,13 +57,19 @@ function mayReplaceFence(rec, opts) {
 
 /**
  * 装配/替换一份围栏。
- * @param {object} fence 需实现 preCheck/postCheck
+ * @param {object} fence 需实现 `preCheck(tool, args, sessionId, chainId, fenceCtx)` /
+ *        `postCheck(tool, output, duration, ok, sessionId, chainId)`：位置是**契约**，多声明只会静默收到 `undefined`。
  * @param {{owner?: string, core?: object}} [opts] `core` 给了就只对该 core 生效；
  *        不给则作为**全局**兜底（旧调用方形态，日志会注明）。
  * @returns {{token: string}} 凭据，`removeFence()` 时用它证明"我是装它的那个人"
  */
 export function setFence(fence, opts = {}) {
   const owner = String(opts.owner || LEGACY_OWNER);
+  // 位置参数是契约：平台只传 5 个，声明更多的槽永远收不到值，`fenceCtx` 也不会自动挪位。
+  if (typeof fence?.preCheck === 'function' && fence.preCheck.length > 5) {
+    process.emitWarning(`fence "${owner}" 的 preCheck 声明了 ${fence.preCheck.length} 个位置参数，`
+      + '平台只传 5 个（tool, args, sessionId, chainId, fenceCtx）', 'TusunFenceArity');
+  }
   // **token 必须不可猜**：原值是 `${owner}#${seq}`，owner 是公开字符串、
   // seq 从 1 递增 —— 等于"知道名字就能推出凭据"。凭据要能证明"我是装它的那个人"，
   // 就不能由任何人复算出来。改用 CSPRNG；`seq` 只留在内部用于观测，不参与凭据。
@@ -1699,7 +1705,8 @@ export class ToolExecutor {
         : this.core?._fenceContext;
       const pre = await _fence.preCheck(toolName, expandedArgs, sessionId || null, chainId || null, fenceCtx);
       if (!pre.ok) {
-        const card = pre.result || {};
+        // 围栏回包形状不统一：`{ok:false, result: 诊断卡}` 与平铺 `{ok:false, code, reason}` 都要认，否则诊断码永远 `UNKNOWN`。
+        const card = pre.result || pre || {};
         return { tool_call_id: args._tcId, tool: toolName, result: null, status: 'blocked', error: card.reason || 'Tool blocked',
           diagnostic: { code: card.code || 'UNKNOWN', reason: card.reason || 'Tool blocked',
             hint: card.hint || '', alternatives: card.alternatives || [], path: card.path, command: card.command } };

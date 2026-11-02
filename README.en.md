@@ -121,8 +121,8 @@ tusunsun keeps long-lived responsibilities in a small kernel and puts fast-movin
 | --- | --- |
 | Core size | **4,889 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
 | External npm runtime dependencies | **0** |
-| 0.20.2 tarball | **437 files / ~1.81 MB** (measured with `npm pack`) |
-| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,380 lines total |
+| 0.20.2 tarball | **439 files / ~1.82 MB** (measured with `npm pack`) |
+| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,522 lines total |
 | Bundled third-party code | Yes — `ws` (18 files) and `liuhe-lite` (43 files) ship with provenance and per-file hashes. "No install-time dependencies" is **not** the same as "no third-party code" |
 
 > Line-count convention: the **microkernel is 4,889 lines** across 8 files; the enforced budget is
@@ -158,7 +158,7 @@ Measured on `0.20.2` (Linux x64 / Node 22.22.2):
 
 | Check | Public source checkout | npm artifact (unpacked) |
 | --- | ---: | ---: |
-| Unit tests | **1,513 / 1,513 pass / 0 fail / 0 skip** | **1,513 total / 1,503 pass / 0 fail / 10 skip** |
+| Unit tests | **1,521 / 1,521 pass / 0 fail / 0 skip** | **1,521 total / 1,511 pass / 0 fail / 10 skip** |
 | Integration | **63 / 63** | **63 / 63** |
 | Smoke | **2 / 2** | **2 / 2** |
 | Counterexample probes | **27 probes all rc=0** | same (probes ship with the package) |

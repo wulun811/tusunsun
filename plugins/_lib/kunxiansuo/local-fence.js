@@ -88,9 +88,13 @@ export class LocalFence {
     this._lastPrune = Date.now();
   }
 
-  preCheck(tool, args, sessionId, chainId, expertId, fenceCtx = null) {
+  // 第 5 参是**平台契约**的 `fenceCtx`（`tool-executor` 决定传什么），不是 expertId：位置错开会让
+  // `irreversibleAcknowledged` 静默丢进别的槽，第三方登记本类时还会白查一次 `experts.[object Object]`。
+  // 工具白名单因此改从 `fenceCtx.expertId` 取，不占位置参数。
+  preCheck(tool, args, sessionId, chainId, fenceCtx = null) {
     tool = tool?.trim() || '';
 
+    const expertId = fenceCtx?.expertId ?? null;
     if (expertId) {
       const expertCfg = this.core.get('experts.' + expertId);
       const allowlist = expertCfg?.toolsAllow;

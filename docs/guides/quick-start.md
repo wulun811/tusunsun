@@ -153,6 +153,22 @@ curl -s http://127.0.0.1:9002/v1/chat/completions \
 不声明就还是上面的默认根（升级不会改变既有落点）。一个会话只绑一个目录，换目录请换 `session_id`；
 `GET /api/sessions` 可以查「谁在哪个目录」。默认只信本机：远端调用方必须落在 `workspaces.roots` 里。
 
+上下文用了多少、摘要是什么、能不能现在就压缩（控制面，与其余 `/api/*` 同门）：
+
+```bash
+curl -s 'http://127.0.0.1:9002/api/context?session_id=repo-a'
+# → {"session_id":"repo-a","used":4507,"max":8000,"percent":56,"messages":13,
+#    "summary":{"text":"","source_range":null,"generator":null,"degraded":true,"reason":"no_summary"}}
+
+curl -s -X POST http://127.0.0.1:9002/api/context/compact \
+  -H 'Content-Type: application/json' -d '{"session_id":"repo-a"}'
+# → {"session_id":"repo-a","compacted":true,"messages":{"before":13,"after":8},
+#    "used":{"before":12515,"after":7510},"percent":{"before":100,"after":93}, "summary":{...}}
+```
+
+摘要只在内存里的部署标 `degraded:true`（重启后不能回读，不假装 durability）；摘不到摘要时
+`POST /api/context/compact` 返回 `409 summary_unavailable`，会话**一字不动** —— 不拿“删了但没摘要”冒充压缩。
+
 ## 启动
 
 ```bash

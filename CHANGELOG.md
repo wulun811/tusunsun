@@ -28,11 +28,11 @@
 
 | 形态 | 单元测试 | 集成 | 冒烟 |
 |---|---|---|---|
-| **开发树**（公开树源码检出，Linux x64 / Node 22.22.2） | 1513 总 / 1513 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 |
-| **npm 制品**（解包后） | 1513 总 / 1503 通过 / 0 失败 / 10 跳过 | 63/63 | 2/2 |
+| **开发树**（公开树源码检出，Linux x64 / Node 22.22.2） | 1521 总 / 1521 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 |
+| **npm 制品**（解包后） | 1521 总 / 1511 通过 / 0 失败 / 10 跳过 | 63/63 | 2/2 |
 
-- 开发树 27 套探针全部 rc=0；制品 **437 个文件 / 约 1.81 MB**；`src/core/` 8 文件 / 4889 行 / 260153 B 未变。
-- 三平台 CI run `41326536944`：Ubuntu 1513/1513；macOS 1513 总 / 1508 通过 / 5 跳过（`/proc` 依赖，不折算通过）；Windows gates + windows-release + install-acceptance 全绿；`package` 作业在净室安装后实测 1513 总 / 1503 通过 / 10 跳过。
+- 开发树 27 套探针全部 rc=0；制品 **439 个文件 / 约 1.82 MB**；`src/core/` 8 文件 / 4889 行 / 260153 B 未变。
+- 三平台 CI run `待本轮回填`：Ubuntu / macOS / Windows / package 四个作业的分组结果见本节末尾回填。
 - 计数口径：单测按 `test/unit/*.test.mjs` 注册的用例数计；集成按 `test/integration/*.test.mjs` 注册的用例数计；冒烟按套件用例计。开发树与制品分开报，不互相顶替。
 - 验收脚本退出码三档：`0` = 通过；`1` = 有失败项；`2` = **通过数为 0**（含**找不到 npm** 或没有可跑用例）。跳过一律记 NOT_RUN，**不折算**为通过。
 
@@ -43,7 +43,36 @@
 - `unbounded` 不等于安全；`mixed` 不等于授权 —— 文案里都如实说。
 - 性能对照仍取自开发线 `0.20.1` 树；`0.20.2` 未按同一口径重跑，新增的工具参数声明与挑战文本可能略微改变回合上下文。
 
-### 5. 未做
+### 5. 补充：围栏 `preCheck` 的位置参数契约（R0-173）
+
+`tool-executor` 调用围栏固定传 5 个位置参数：`(tool, args, sessionId, chainId, fenceCtx)`。
+自带 `LocalFence` 曾声明 6 参（第 5 参 expertId、第 6 参 fenceCtx），自带插件各自补位所以发布物
+自身不受影响；但按平台接口直接登记 `LocalFence` 的调用方会把 `fenceCtx` 传进 `expertId` 槽：
+`irreversibleAcknowledged` 静默丢失（确认过的 `mv` 仍被 `CMD_GUARD` 拒绝），还会白查一次
+`experts.[object Object]`。
+
+- `LocalFence.preCheck` 收敛到 5 参；工具白名单改从 `fenceCtx.expertId` 读，不占位置参数。
+- `kunxiansuo-local` 去掉补位参数，两处同形。
+- `setFence` 对声明超过 5 个位置参数的围栏发 `TusunFenceArity` 警告并点名 owner。
+- 执行器接受平铺回包 `{ok:false, code, reason}`（`result` 优先、平铺兜底），诊断码不再退化成 `UNKNOWN`。
+- 判据：`test/unit/test-r0-173-fence-precheck-contract.test.mjs`（4 条，行为锁）。
+
+### 6. 补充：上下文读数与手动压缩（R0-174）
+
+外部调用方需要在网关外看到“当前上下文用了多少 / 摘要是谁生成的 / 能不能现在压缩”。
+
+| 能力 | 入口 |
+|---|---|
+| 上下文读数 | `GET /api/context?session_id=` → `{used,max,percent,messages,summary}`，与 `context.getUsage()` 同源 |
+| 摘要元数据 | `summary:{text,source_range,generator,degraded,reason}`；内存摘要如实标 `degraded:true` |
+| 手动压缩 | `POST /api/context/compact` → 强制摘要后裁轮次，回报前/后用量；摘不到就 `409 summary_unavailable`，会话不动 |
+
+- 两个端点都在控制面 `/api/*`，与其余控制面同门（同源 + Bearer）；没有“列出所有会话”的入口。
+- 摘要**留在摘要位**，不写进会话第 0 条 —— 写进去下一轮会二次注入。
+- 文档：`docs/guides/quick-start.md` 的控制面示例与 `docs/reference/cell-api.md` 的「复用与进程成本」。
+- 判据：`test/unit/test-r0-174-context-endpoint.test.mjs`（4 条：读数同源 / 400-404-200-403 / 压缩变小且摘要不写回 / 无摘要时 409 不动会话）。
+
+### 7. 未做
 
 - npm registry 发布：本版未执行 `npm publish`；等渠道配置与显式授权后再发。
 - `v0.20.2` git tag：等三平台 CI 绿后按发布清单处理，不在本提交里自行打 tag。

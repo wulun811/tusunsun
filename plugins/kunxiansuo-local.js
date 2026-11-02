@@ -76,9 +76,8 @@ class KunxiansuoLocal {
   }
 
   async preCheck(tool, args, sessionId, chainId, context) {
-    // 注意：执行器把 context 作为第 5 个参数传入（`this.core?._fenceContext` 或软闸确认载荷），
-    // local-fence 的 ctx 走第 6 个参数。此处的 context 原样透传，不吞掉。
-    const localResult = this.localFence.preCheck(tool, args, sessionId, chainId, null, context);
+    // 第 5 参就是平台契约的 `fenceCtx`（执行器的 `core._fenceContext` 或软闸确认载荷）：原样透传，两处同形。
+    const localResult = this.localFence.preCheck(tool, args, sessionId, chainId, context);
     if (!localResult.ok) {
       return { ok: false, result: DiagnosticCard.create({
         code: localResult.code || 'UNKNOWN', tool,

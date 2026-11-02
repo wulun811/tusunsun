@@ -37,9 +37,9 @@
 |---|---|---|---|
 | 入口 | `tusunsun.mjs`（73 行）、`scripts/cli.mjs`（820 行） | 893 行 | 中 |
 | 内核 | `src/core/*.js` | **8 文件 / 4889 行** | **极低**（有行数预算，见 ADR-10） |
-| 插件 | `plugins/*.js` | **40 文件 / 19336 行** | 高 |
+| 插件 | `plugins/*.js` | **40 文件 / 19474 行** | 高 |
 | 工具插件 | `plugins/tools/*.js` | **10 文件 / 1281 行** | 高 |
-| 插件库 | `plugins/_lib/**` | **22 文件 / 4763 行** | 中 |
+| 插件库 | `plugins/_lib/**` | **22 文件 / 4767 行** | 中 |
 | 场景配方 | `scenes/*.json5` | 10 个 | 高 |
 | 内置第三方 | `vendor/ws`、`vendor/liuhe-lite` | 逐文件 sha256 校验 | 低 |
 | 示例 | `examples/` | 10 个文件（含 2 个 Cell 示例） | 低 |
@@ -52,7 +52,7 @@
 
 ```bash
 node scripts/line-check.js | tail -6            # 内核：src/core 总行 4889/4889
-ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19336
+ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19474
 ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 ```
 
@@ -203,11 +203,11 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 | 插件 | 行数 | 提供 | 清单 |
 |---|---:|---|---|
 | `tool-loader` | 477 | tool-registry（服务） | 类字段 |
-| `tool-executor` | 2683 | tool-executor、tool.compose、action.inspect | v2 清单 |
+| `tool-executor` | 2690 | tool-executor、tool.compose、action.inspect | v2 清单 |
 | `tool-guard` | 126 | tool-guard（服务） | 类字段 |
 | `tool-normalizer` | 57 | tool-normalizer（服务）、tool.toOpenAI、tool.toAnthropic、tool.describe | 类字段 |
 | `sandbox` | 446 | sandbox | v2 清单 |
-| `kunxiansuo-local` | 122 | kunxiansuo.local（服务）、tool.fence | 类字段 |
+| `kunxiansuo-local` | 120 | kunxiansuo.local（服务）、tool.fence | 类字段 |
 | `scene-inspect` | 170 | scene.inspect | 类字段 |
 | `scene-switch-listener` | 108 | scene.list、scene.current、scene.switch | 类字段 |
 | `recycle-advisor` | 91 | recycle-advisor（服务） | 类字段 |
@@ -222,7 +222,7 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 | `model-openai` | 692 | model（服务） | 类字段 |
 | `session` | 253 | session（服务） | 类字段 |
 | `haotian-lite` | 831 | chat.handle | 类字段 |
-| `context-manager` | 379 | context（服务） | 类字段 |
+| `context-manager` | 454 | context（服务） | 类字段 |
 | `context-port` | 485 | context-port（服务） | 类字段 |
 | `experience-port` | 574 | experience-port（服务） | 类字段 |
 | `compaction` | 287 | compaction（服务） | 类字段 |
@@ -234,7 +234,7 @@ ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 
 | 插件 | 行数 | 提供 | 清单 |
 |---|---:|---|---|
-| `gateway` | 1153 | gateway | 类字段 |
+| `gateway` | 1208 | gateway | 类字段 |
 | `chat-ui` | 1613 | route./、route./chat、route./api/config | 类字段 |
 | `tui` | 758 | —（CLI 命令提供者，不是插件） | 类字段 |
 | `channel-base` | 59 | —（渠道扩展基类，供 `examples/channel-*.js` 继承） | 类字段 |
