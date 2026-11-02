@@ -72,7 +72,18 @@
 - 文档：`docs/guides/quick-start.md` 的控制面示例与 `docs/reference/cell-api.md` 的「复用与进程成本」。
 - 判据：`test/unit/test-r0-174-context-endpoint.test.mjs`（4 条：读数同源 / 400-404-200-403 / 压缩变小且摘要不写回 / 无摘要时 409 不动会话）。
 
-### 7. 未做
+### 7. 补充：Windows 本地门禁的路径归一化
+
+- `scripts/core-dep-check.mjs` 先用 `join` 拼路径、再按 `'/'` 截前缀。Windows 下路径是反斜杠，
+  前缀截不掉，`src/` 的 9 个文件会**同时**被报成「未归类」和「名单过期」，本地 `check:deps`
+  与发布门禁的 `deps-zero-external` 项必红。
+- 改为 `relative(dir, file)` 后用 `sep` 归一化成 `/`；Linux/macOS 的判定与输出不变。
+- 这条不在 `npm run check` 里，也不在 Windows CI 的覆盖范围内（`npm run check` 本就不含它），
+  所以此前三平台全绿也发现不了。
+- 判据：Windows 本地实跑 `node scripts/core-dep-check.mjs` rc=0；
+  `test/unit/test-0.9.24-structural-and-interface-fixes.test.mjs` 8/8。
+
+### 8. 未做
 
 - npm registry 发布：本版未执行 `npm publish`；等渠道配置与显式授权后再发。
 - `v0.20.2` git tag：等三平台 CI 绿后按发布清单处理，不在本提交里自行打 tag。

@@ -27,7 +27,7 @@
 //   `PUBLISHED_PLUGINS`（R0-65/E5 已有）抄第二遍，两份同义名单必然漂移。
 //   ① 的名单规模（9 个）小到可以人肉维护，② 的口径（"整棵树零外部依赖"）不需要名单。
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CORE_MAX_LINES } from './core-limits.mjs';
 
@@ -101,7 +101,7 @@ function scan(dir, base) {
   let lineCount = 0;
   for (const file of walk(dir)) {
     fileCount++;
-    const rel = file.replace(dir + '/', '').replace(/\\/g, '/');
+    const rel = relative(dir, file).split(sep).join('/');
     seenFiles.add(rel);
     const src = readFileSync(file, 'utf8');
     // 口径：`split('\n').length`（= 换行数 + 1），与 `scripts/core-limits.mjs` 钉死的
