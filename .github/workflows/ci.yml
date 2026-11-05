@@ -36,7 +36,22 @@ jobs:
       - name: Build gates
         run: npm run check
       - name: Run all tests
-        run: npm test
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee test-output.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            {
+              echo "## npm test failed (rc=$rc)"
+              echo '```text'
+              grep -aE "FAIL|✗|Error|Summary|Total:|Failed:" test-output.log | tail -80 | sed 's/\x1b\[[0-9;]*m//g'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            grep -aE "FAIL|Summary|Total:|Failed:" test-output.log | tail -20 \
+              | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+          fi
+          exit $rc
 
   # 打包 → 干净目录安装 → 真跑一次：用户拿到手能不能用的直接证据。
   package:
@@ -59,9 +74,23 @@ jobs:
           npm install "$GITHUB_WORKSPACE"/tusunsun-*.tgz --no-audit --no-fund
           node node_modules/tusunsun/tusunsun.mjs --version
       - name: Run the packaged test suite (artifact form)
+        shell: bash
         run: |
           cd "$RUNNER_TEMP/clean/node_modules/tusunsun"
-          npm test
+          set +e
+          npm test 2>&1 | tee test-output.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            {
+              echo "## packaged npm test failed (rc=$rc)"
+              echo '```text'
+              grep -aE "FAIL|✗|Error|Summary|Total:|Failed:" test-output.log | tail -80 | sed 's/\x1b\[[0-9;]*m//g'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            grep -aE "FAIL|Summary|Total:|Failed:" test-output.log | tail -20 \
+              | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+          fi
+          exit $rc
 
   windows-release:
     name: windows (node ${{ matrix.node-version }} / gates + install acceptance)
