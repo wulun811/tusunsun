@@ -119,16 +119,16 @@ tusunsun keeps long-lived responsibilities in a small kernel and puts fast-movin
 
 | Engineering fact (measured on 0.20.2) | Value |
 | --- | --- |
-| Core size | **4,889 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
+| Core size | **4,896 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
 | External npm runtime dependencies | **0** |
-| 0.20.2 tarball | **439 files / ~1.82 MB** (measured with `npm pack`) |
-| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,522 lines total |
+| 0.20.2 tarball | **445 files / ~1.83 MB** (measured with `npm pack`) |
+| Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 25,537 lines total |
 | Bundled third-party code | Yes — `ws` (18 files) and `liuhe-lite` (43 files) ship with provenance and per-file hashes. "No install-time dependencies" is **not** the same as "no third-party code" |
 
-> Line-count convention: the **microkernel is 4,889 lines** across 8 files; the enforced budget is
-> **core ≤ 4889 lines** — raising it requires the approval process in ADR-10.
+> Line-count convention: the **microkernel is 4,896 lines** across 8 files; the enforced budget is
+> **core ≤ 4896 lines** — raising it requires the approval process in ADR-10.
 
-None of this means the whole repository is 4,889 lines, and it does not mean plugins must be short. **What is small is the stable core — not the imagination of the ecosystem.**
+None of this means the whole repository is 4,896 lines, and it does not mean plugins must be short. **What is small is the stable core — not the imagination of the ecosystem.**
 
 When a plugin misbehaves, start from its declaration, lifecycle, call contract and execution receipt. When a capability must change, prefer adjusting the plugin or the scene over touching the control plane.
 
@@ -158,7 +158,7 @@ Measured on `0.20.2` (Linux x64 / Node 22.22.2):
 
 | Check | Public source checkout | npm artifact (unpacked) |
 | --- | ---: | ---: |
-| Unit tests | **1,521 / 1,521 pass / 0 fail / 0 skip** | **1,521 total / 1,511 pass / 0 fail / 10 skip** |
+| Unit tests | **1,537 / 1,537 pass / 0 fail / 0 skip** | **1,537 total / 1,527 pass / 0 fail / 10 skip** |
 | Integration | **63 / 63** | **63 / 63** |
 | Smoke | **2 / 2** | **2 / 2** |
 | Counterexample probes | **27 probes all rc=0** | same (probes ship with the package) |

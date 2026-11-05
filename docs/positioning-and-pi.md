@@ -2,7 +2,7 @@
 
 > 核对日期：正文与 Pi 的对照结论取自 2026-10-20（土行孙 v0.9.10 加 Windows 修复，Pi 为当日官方文档与仓库 main），当天没有安装或执行 Pi，也没有做双方性能/任务成功率对照实验。
 >
-> **局部数字已随版本更新**：下方表格里的实现路径与核心行数已核对到 0.20.0（4889 行，`src/builtin/` 于 v0.9.25 并入 `plugins/`）。除这些局部修正外，本文对 Pi 的对照结论**没有重新核过**——Pi 侧信息仍停留在 2026-10-20，引用前请自行复核上游。
+> **局部数字已随版本更新**：下方表格里的实现路径与核心行数已核对到 0.20.2（4896 行，`src/builtin/` 于 v0.9.25 并入 `plugins/`）。除这些局部修正外，本文对 Pi 的对照结论**没有重新核过**——Pi 侧信息仍停留在 2026-10-20，引用前请自行复核上游。
 
 ## 土行孙的主张：让 Agent 跟着工作变
 
@@ -48,7 +48,7 @@
 
 | 主张 | 实现或证据入口 | 不能外推成什么 |
 |---|---|---|
-| 微内核 4889 行 | `src/core/*.js` 按 `split('\n').length` 求和；预算测试 `test/unit/test-r0-108-line-budget-gate.test.mjs`；来历见 [ADR-10](adr/ADR-10-core-line-budget.md) | 全部产品仅 4889 行；代码少就一定更可靠；4889 是“历次把写在文档里的判据补进代码”的结果，不是设计目标 |
+| 微内核 4896 行 | `src/core/*.js` 按 `split('\n').length` 求和；预算测试 `test/unit/test-r0-108-line-budget-gate.test.mjs`；来历见 [ADR-10](adr/ADR-10-core-line-budget.md) | 全部产品仅 4896 行；代码少就一定更可靠；4896 是“历次把写在文档里的判据补进代码”的结果，不是设计目标 |
 | 场景驱动装配 | `src/core/scene-controller.js`、`plugin-manager.js`、`scenes/*.json5` | CLI 修改配置就已热切远端运行实例；插件间存在安全隔离 |
 | 能力按需加载与闲置回收 | `src/core/plugin-manager.js` 的 `_resolveLazy`、`_lazyLoadOne`、`_checkIdle`、`_recycle` | 所有模块延迟导入、任意插件立即可卸载、固定内存/token 节省 |
 | 模型可适配 | `plugins/model-openai.js` 与消费 `model` 服务的对话插件 | 不写适配器就兼容所有模型协议；Pi SDK 可直接替换 |

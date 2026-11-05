@@ -48,6 +48,23 @@ init() → start() → [运行中] → stop()
 - 停止阶段，清理资源
 - 必须释放所有定时器、连接等
 
+## 懒加载：只有能力名能触发它
+
+场景里的 `lazy` 列表**不是“延后 init”，是“挂了钩子”**：内核只会在三种入口上触发装载 ——
+`hasCapability(id)`、`callCapability(id)`、`command(id)`（它们都经过 `_resolveLazily`）。
+
+`core.getService(name)` **不触发**（它是同步只读，拿不到就返回 `undefined`）。所以：
+
+- 只 `provides` 服务、不注册任何能力的插件**不能放 `lazy`** —— 永远没人能触发它。
+  内核会把它判成 `degraded` 并在启动时点名（`[admission-gate] lazy 插件 "x" 只提供 service…`），
+  看到这条就往场景的 `eager` 里挪。
+- 既提供服务又注册能力的插件可以放 `lazy`：第一次能力调用会把它连服务一起装起来。
+
+## 装载失败与 readiness
+
+插件 import/索引失败不再只留一行日志：它会被记进 `core._startFailures`（`phase:'load'`），
+`readiness.status()` 因此变 `degraded` 并在 `failed` 里点名那个文件。报错和健康结论不会分家。
+
 ## Core API
 
 ### 日志
@@ -99,6 +116,11 @@ core.registerCapability('example.run', {
 // 调用能力
 const result = await core.command('example.run', { key: 'value' });
 ```
+
+`input_schema` 只支持一个**受限子集**（根 `type` / `required` / `properties`，属性只有 `type`）。
+子集外的关键字（`enum`、`pattern`、`items`、`type: [...]`、嵌套 `properties`、`minLength`…）
+**不会拦住注册**，也不会被执行：注册时打一条 `[schema]` 告警，并逐条记进能力条目的
+`schema_unvalidated`（`listCapabilities()` 可枚举）。需要那些约束时，在 handler 里自己校验。
 
 ### 命令总线
 

@@ -53,6 +53,7 @@
 - [ADR-11 错误原因的加性归一](adr/ADR-11-error-category-additive.md)
 - [ADR-12 Node.js 支持矩阵（放弃 18/20）](adr/ADR-12-node-support-matrix.md)
 - [ADR-13 拒绝码的执行阶段分层](adr/ADR-13-denial-execution-stage.md)
+- [ADR-14 schema 支持面改口径](adr/ADR-14-schema-support-surface.md) — 不再注册期拒绝：登记照常成功，未生效的约束逐条记进 `schema_unvalidated`
 
 ## 质量与可复现证据
 

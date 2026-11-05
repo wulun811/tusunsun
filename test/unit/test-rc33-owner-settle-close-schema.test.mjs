@@ -408,41 +408,41 @@ export default async function (runner) {
 
   // ══ I. R32-05：schema 支持面是**整棵树的白名单** ═══════════════════════
 
-  runner.test('rc.33/R32-05 根级 $ref 必须在注册期拒绝（专家主反例之一）', async () => {
+  runner.test('rc.33/R32-05 根级 $ref：登记成功，但必须记成未生效约束（专家主反例之一）', async () => {
     const base = tmp();
     try {
       const core = await bareCore(base);
-      let err = null;
-      try {
-        core.registerCapability('probe.root_ref', {
-          owner: 'test', handler: async (x) => x,
-          input_schema: { required: ['x'], properties: { x: { type: 'string' } }, $ref: '#/unsupported' },
-        });
-      } catch (e) { err = e; }
-      assert(err != null, `根级 $ref 必须被拒（专家实测：rc.32 接受了并执行成功），实际 ACCEPTED`);
-      assert(/schema_unsupported/.test(String(err.message)), `拒因必须是 schema_unsupported，实际 ${err.message}`);
-      assert(/\$ref/.test(String(err.message)), `拒因必须点名那个关键字，实际 ${err.message}`);
+      const warns = [];
+      core.log = (level, msg) => { if (level === 'warn') warns.push(String(msg)); };
+      core.registerCapability('probe.root_ref', {
+        owner: 'test', handler: async (x) => x,
+        input_schema: { required: ['x'], properties: { x: { type: 'string' } }, $ref: '#/unsupported' },
+      });
+      const rec = core._capabilities.get('probe.root_ref');
+      const kw = (rec?.schema_unvalidated || []).map((i) => i.keyword);
+      assert(kw.includes('$ref'), `未生效约束必须点名 $ref（专家实测：rc.32 接收了但没任何标记），实际 ${JSON.stringify(kw)}`);
+      assert(warns.some((w) => /\$ref/.test(w)), `必须留下具名告警，实际 ${JSON.stringify(warns)}`);
+      const row = core.listCapabilities().find((c) => c.id === 'probe.root_ref');
+      assert(row?.schema_unvalidated?.includes('$ref'), 'listCapabilities 必须能枚举出 $ref 未生效');
     } finally { rmSync(base, { recursive: true, force: true }); }
   });
 
-  runner.test('rc.33/R32-05 嵌套 properties 里的 $ref 必须在注册期拒绝（专家主反例之二）', async () => {
+  runner.test('rc.33/R32-05 深层嵌套的 $ref：登记成功但指出在哪一层未生效（专家主反例之二）', async () => {
     const base = tmp();
     try {
       const core = await bareCore(base);
-      let err = null;
-      try {
-        core.registerCapability('probe.nested_ref', {
-          owner: 'test', handler: async (x) => x,
-          input_schema: { required: ['x'], properties: { x: { type: 'object', properties: { admin: { $ref: '#/unsupported' } } } } },
-        });
-      } catch (e) { err = e; }
-      assert(err != null, `深层 $ref 必须被拒（专家实测：rc.32 接受了并执行成功），实际 ACCEPTED`);
-      assert(/schema_unsupported/.test(String(err.message)), `拒因必须是 schema_unsupported，实际 ${err.message}`);
-      assert(/\$\.properties\.x/.test(String(err.message)), `拒因必须指出**在哪一层**，实际 ${err.message}`);
+      core.registerCapability('probe.nested_ref', {
+        owner: 'test', handler: async (x) => x,
+        input_schema: { required: ['x'], properties: { x: { type: 'object', properties: { admin: { $ref: '#/unsupported' } } } } },
+      });
+      const issues = core._capabilities.get('probe.nested_ref')?.schema_unvalidated || [];
+      assert(issues.some((i) => i.path === '$.properties.x'),
+        `未生效位置必须是 $.properties.x（指出在哪一层），实际 ${JSON.stringify(issues.map((i) => i.path))}`);
+      assert(issues.some((i) => i.keyword === 'properties'), '必须点名 properties（本内核不递归校验子结构）');
     } finally { rmSync(base, { recursive: true, force: true }); }
   });
 
-  runner.test('rc.33/R32-05 属性子表只允许 type：pattern / enum / 嵌套 properties 一律拒', async () => {
+  runner.test('rc.33/R32-05 属性子表的 pattern / enum / items / 嵌套 properties：登记成功并逐条点名', async () => {
     const base = tmp();
     try {
       const core = await bareCore(base);
@@ -453,15 +453,18 @@ export default async function (runner) {
         nested: { type: 'object', properties: { inner: { type: 'string' } } },
       };
       for (const [label, sub] of Object.entries(bad)) {
-        let err = null;
-        try {
-          core.registerCapability(`probe.sub.${label}`, {
-            owner: 'test', handler: async (x) => x,
-            input_schema: { type: 'object', properties: { s: sub } },
-          });
-        } catch (e) { err = e; }
-        assert(err != null, `属性子表里的 '${label}' 必须被拒，实际 ACCEPTED`);
-        assert(/schema_unsupported/.test(String(err.message)), `'${label}' 的拒因必须是 schema_unsupported，实际 ${err.message}`);
+        const id = `probe.sub.${label}`;
+        core.registerCapability(id, {
+          owner: 'test', handler: async (x) => x,
+          input_schema: { type: 'object', properties: { s: sub } },
+        });
+        const issues = core._capabilities.get(id)?.schema_unvalidated || [];
+        assert(issues.length > 0, `属性子表里的 '${label}' 必须被记成未生效约束，实际没有任何记录`);
+        assert(issues.every((i) => i.path === '$.properties.s'),
+          `'${label}' 未生效位置必须是 $.properties.s，实际 ${JSON.stringify(issues.map((i) => i.path))}`);
+        // 能判的部分必须仍在判：type 声明照常生效（否则“登记成功”就变成了“什么都不管”）。
+        const r = await core.callCapability(id, { s: 123 });
+        assert(r.ok === false, `'${label}' 的 type 约束必须仍然生效（123 不是 ${sub.type}），实际 ${r.code || r.state || 'ok'}`);
       }
     } finally { rmSync(base, { recursive: true, force: true }); }
   });
@@ -500,7 +503,7 @@ export default async function (runner) {
     } finally { rmSync(base, { recursive: true, force: true }); }
   });
 
-  runner.test('rc.33/R32-05 形状错误：required 不是字符串数组 / 根 type 与 properties 矛盾', async () => {
+  runner.test('rc.33/R32-05 形状错误：登记成功但逐条记成 schema 问题（含具名 code）', async () => {
     const base = tmp();
     try {
       const core = await bareCore(base);
@@ -513,11 +516,12 @@ export default async function (runner) {
         bad_additional: { properties: {}, additionalProperties: 'no' },
       };
       for (const [label, schema] of Object.entries(cases)) {
-        let err = null;
-        try { core.registerCapability(`probe.bad.${label}`, { owner: 'test', handler: async () => 1, input_schema: schema }); } catch (e) { err = e; }
-        assert(err != null, `'${label}' 必须被拒，实际 ACCEPTED`);
-        assert(/schema_invalid|schema_unsupported/.test(String(err.message)),
-          `'${label}' 必须具名拒绝，实际 ${err.message}`);
+        const id = `probe.bad.${label}`;
+        core.registerCapability(id, { owner: 'test', handler: async () => 1, input_schema: schema });
+        const issues = core._capabilities.get(id)?.schema_unvalidated || [];
+        assert(issues.length > 0, `'${label}' 必须被记成未生效约束（不得静默接受），实际无记录`);
+        assert(issues.every((i) => /^schema_(invalid|unsupported)$/.test(i.code)),
+          `'${label}' 的 code 必须具名，实际 ${JSON.stringify(issues.map((i) => i.code))}`);
       }
     } finally { rmSync(base, { recursive: true, force: true }); }
   });

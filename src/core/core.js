@@ -38,7 +38,7 @@ const HOST_CONTROLS = new WeakMap();
 const UNSUPPORTED_SCHEMA_KEYWORDS = ('enum const oneOf anyOf allOf not pattern format minimum maximum exclusiveMinimum exclusiveMaximum multipleOf minLength maxLength items minItems maxItems uniqueItems $ref').split(' ');
 // schema 支持面白名单（rc.33 / R32-05）：字面上就是 `_schemaViolation` 真正会执行的那点东西。
 // 根对象允许 4 个**约束**关键字 + 2 个**注释**关键字，属性子表只允许 `type` + 注释；
-// 不在这里“猜调用方意图”——出现白名单外的关键字 ⇒ 注册期具名拒绝，绝不静默忽略。
+// 白名单外的关键字**不再拒绝登记**：收集成 schema 问题、告警、记在能力条目上（见 `_schemaIssues`）。
 //
 // 为什么放 `title`/`description`/`default` 进来：它们不携带任何**断言**（不是“没校验”，而是
 // “没有可校验的东西”）。把它们也拒掉，等于逼 80 个插件删掉自己的参数说明 —— 为了让判据看起来
@@ -50,6 +50,16 @@ const ROOT_SCHEMA_KEYWORDS = ['type', 'required', 'properties', 'additionalPrope
 const PROPERTY_SCHEMA_KEYWORDS = ['type', 'title', 'description', 'default'];
 const SCHEMA_ANNOTATION_KEYWORDS = ['title', 'description'];
 const JSON_SCHEMA_TYPES = ['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'];
+// 运行时类型（`null` 与数组都不是 `typeof` 的取值）。
+const valueTypeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+// `type` 判据：字符串或 draft-07 的**数组并集**。true/false = 判得了；null = 判不了（拼错的类型名、
+// 空数组），此时只记账、不执行 —— 「登记成功、逐条记账」不许在执行面变成「恒假」。
+const typeMatches = (decl, v) => {
+  const list = typeof decl === 'string' ? [decl] : Array.isArray(decl) ? decl : [];
+  if (!list.length || !list.every((t) => JSON_SCHEMA_TYPES.includes(t))) return null;
+  return list.some((t) => (t === 'integer' ? Number.isInteger(v) : valueTypeOf(v) === t));
+};
+const typeLabel = (decl) => (Array.isArray(decl) ? decl.join(',') : String(decl));
 // scope 等级（read < write < admin）：admin 蕴含 write，write 蕴含 read。
 // **null 原型**：`in` 与裸下标会沿着原型链找到 `toString`/`constructor`/`__proto__`；
 // 一旦有人把 `'toString'` 当 scope 传进来，`(函数 ?? 0)` 不是数字，任何大小比较都返回
@@ -1121,10 +1131,8 @@ class Core extends EventEmitter {
     const lockedInput = this._lockDecl(input_schema, 'input_schema');
     const lockedOutput = this._lockDecl(output_schema, 'output_schema');
     const lockedPerms = this._lockDecl(permissions, 'permissions');
-    // R0-28：注册时具名拒绝不支持的 schema 关键字。判据读的是**已经冻结的那份副本**——
-    // 校验与提交因此是同一个对象，不存在“审 A、存 B”。
-    this._assertSchemaSupported(id, lockedInput, 'input_schema');
-    this._assertSchemaSupported(id, lockedOutput, 'output_schema');
+    // R0-28：注册期不再因 schema 支持面**拒绝**能力（见 `_schemaIssues`）：体检在下面
+    // 与继承合并之后做一次，没生效的约束记在能力条目上并具名告警。
     // 记账身份由**装配上下文**给出（插件名来自装载器）；`owner` 只是声明。两者冲突时以上下文
     // 为准并记一条日志 —— 自填的 owner 不能决定生命周期按哪个名字找它。
     //
@@ -1166,6 +1174,16 @@ class Core extends EventEmitter {
     // 第二个冻结口，两面迟早不同步。
     const inherited = (v, which, locked) => (v !== undefined ? locked
       : (existing ? this._lockDecl(existing[which], which) : locked));
+    const finalInput = inherited(input_schema, 'input_schema', lockedInput);
+    const finalOutput = inherited(output_schema, 'output_schema', lockedOutput);
+    // schema 体检**不阻断登记**（读的仍是冻结副本，不存在“审 A、存 B”）：没生效的约束记在
+    // 能力条目上并具名告警 —— 一个能力把 schema 写宽了，不该让整个插件从进程里消失。
+    const schemaIssues = [...this._schemaIssues(finalInput, 'input_schema'), ...this._schemaIssues(finalOutput, 'output_schema')];
+    if (schemaIssues.length) {
+      const head = schemaIssues.slice(0, 5).map((i) => `${i.keyword}@${i.path}`).join(', ');
+      const risky = schemaIssues.some((i) => i.assertional) ? '；其中含能改变准入结论的关键字' : '';
+      this.log('warn', `[schema] 能力 "${id}" 有 ${schemaIssues.length} 处声明未生效（内核只执行支持子集）：${head}${schemaIssues.length > 5 ? ' …' : ''}${risky}`);
+    }
     const record = {
       // 记录里同时存 id：句柄反查到记录之后还要回答"删的是哪个能力"。
       // 不存的话 `compare-and-delete` 拿不到键，旧句柄会变成永远不匹配的 false。
@@ -1180,8 +1198,10 @@ class Core extends EventEmitter {
       // 于是登记后一句 `schema.properties.n.type = 'string'` 就能在同一登记号下把原本被拒的
       // 非法入参变成 succeeded（handler 真执行），同时让原本合法的 `{n:1}` 变成 invalid_input。
       // 既可放松准入，也可无声改变合法调用的含义。
-      input_schema: inherited(input_schema, 'input_schema', lockedInput),
-      output_schema: inherited(output_schema, 'output_schema', lockedOutput),
+      input_schema: finalInput,
+      output_schema: finalOutput,
+      // 空数组 = 全部在支持面内；非空 = 这些关键字声明了但本内核不判。只读事实。
+      schema_unvalidated: schemaIssues,
       perf: inherit(perf, 'perf'),
       // **授权判据存权威快照**：存调用方原对象时，登记后一句
       // `config.permissions.require_identity = false` 就改掉了将来的每一次派发 ——
@@ -1205,72 +1225,54 @@ class Core extends EventEmitter {
   }
 
   /**
-   * schema 支持面校验：**整棵树**在注册期按白名单判，不校验的关键字一律具名拒绝。
+   * schema 支持面**体检**：把「声明了但本内核不校验」的地方逐条收集，**不拒绝登记**。
    *
-   * 修前的形状只枚举 `schema.properties` 的**第一层**，于是根上的 `$ref`、以及
-   * `properties.x.properties.admin.$ref` 这种深层写法**照样被接收并执行成功** —— 而合同
-   * 写明 `$ref` 是注册期必须拒绝的（rc.33 / R32-05）。只扫第一层等于“只看我能看到的那一层”。
-   *
-   * 白名单（与 `_schemaViolation` 的执行面一一对应）：
-   *   · 根：`type` / `required` / `properties` / `additionalProperties` + 注释 `title`/`description`/`default`；
-   *   · 属性子表：**只有** `type` + 同样的注释（本内核不递归校验对象子结构，嵌套 `properties`/`items` 拒）；
-   *   · `additionalProperties` 允许出现但**不执行约束**；`default` 只是文档，**从不填充**（合同里明写）。
-   * 校验对象是**登记期冻结的纯数据快照**，不存在“第二遍读用户对象”的问题（见 `_declSnapshot`）。
+   * 为什么不抛：抛 = 整个插件装载失败。一个能力把 schema 写宽了，代价不该是插件从进程里
+   * 消失（真实接入的 7 个 MCP 工具契约里有 6 个因此装不上，只能各自写一遍投影，语义各分叉）。现在的
+   * 口径是「照登记 + 具名告警 + 记在能力条目上」：没生效的约束必须看得见，但插件活着。
+   * 支持面仍与 `_schemaViolation` 的执行面一一对应 —— 本函数不改变「哪些关键字会真判」。
+   * 入参是登记期冻结的纯数据快照（`_lockDecl`），不存在“审一个、存另一个”。
+   * 返回 [{ code, path, keyword, which, assertional }]；空数组 = 整棵树都在支持面内。
    */
-  _assertSchemaSupported(id, schema, which) {
-    if (schema == null) return;
-    // 拒绝本身必须具名：`$ref`/`pattern` 这类关键字是安全关键的，静默当没有就等于声明了却不管。
-    const fail = (path, kw, hint) => {
-      const known = UNSUPPORTED_SCHEMA_KEYWORDS.includes(kw) ? '已知但本内核不校验的关键字' : '不在支持面内';
-      throw new Error(`schema_unsupported：能力 "${id}" 的 ${which} 在 ${path} 使用了${known} '${kw}'${hint ? `（${hint}）` : ''}：`
-        + '受支持的形状只有 根{type,required,properties,additionalProperties} 与 属性{type}，'
-        + '外加不携带断言的 title/description/default（支持表见 contracts/capability-identity-v1.md）');
-    };
-    const invalid = (path, why) => {
-      throw new Error(`schema_invalid：能力 "${id}" 的 ${which} 在 ${path} ${why}`);
-    };
-    // 注释关键字只接受字符串：让它同时是“注释”和“对象”会让读者以为那里还能放断言。
-    const checkAnnotations = (node, at) => {
+  _schemaIssues(schema, which) {
+    const out = [];
+    // `type` 写坏后不再执行 —— 那会改变准入结论，所以照样要标 assertional。
+    const bad = (code, path, keyword) => out.push({ code, path, keyword, which, assertional: keyword === 'type' || UNSUPPORTED_SCHEMA_KEYWORDS.includes(keyword) });
+    const annotations = (node, at) => {
       for (const kw of SCHEMA_ANNOTATION_KEYWORDS) {
-        if (node[kw] !== undefined && typeof node[kw] !== 'string') invalid(`${at}.${kw}`.replace('$.', '$.'), '注释关键字只接受字符串');
+        if (node[kw] !== undefined && typeof node[kw] !== 'string') bad('schema_invalid', `${at}.${kw}`, kw);
       }
     };
-    if (typeof schema !== 'object' || Array.isArray(schema)) invalid('$', '必须是对象');
-    for (const kw of Object.keys(schema)) if (!ROOT_SCHEMA_KEYWORDS.includes(kw)) fail('$', kw);
-    checkAnnotations(schema, '$');
-    if (schema.type !== undefined) {
-      if (!JSON_SCHEMA_TYPES.includes(schema.type)) invalid('$.type', `必须是 ${JSON_SCHEMA_TYPES.join('/')} 之一，实际 ${JSON.stringify(schema.type)}`);
-      if (schema.type !== 'object' && (schema.required !== undefined || schema.properties !== undefined)) {
-        invalid('$', `声明了 required/properties 但 type='${schema.type}'；本内核只校验对象形状`);
-      }
+    if (schema == null) return out;
+    if (typeof schema !== 'object' || Array.isArray(schema)) {
+      bad('schema_invalid', '$', 'root');
+      return out;
     }
-    if (schema.required !== undefined) {
-      if (!Array.isArray(schema.required) || schema.required.some((k) => typeof k !== 'string' || !k)) {
-        invalid('$.required', '必须是非空字符串数组');
-      }
-      if (new Set(schema.required).size !== schema.required.length) invalid('$.required', '有重复项');
+    for (const kw of Object.keys(schema)) if (!ROOT_SCHEMA_KEYWORDS.includes(kw)) bad('schema_unsupported', '$', kw);
+    annotations(schema, '$');
+    // 一条声明只记一条：判不了（`$.type`）与「与结构化契约冲突」（`$`）是同一处的两种诊断。
+    if (schema.type !== undefined && typeMatches(schema.type, null) === null) bad('schema_unsupported', '$.type', 'type');
+    else if (schema.type !== undefined && ![].concat(schema.type).includes('object')
+      && (schema.required !== undefined || schema.properties !== undefined)) bad('schema_unsupported', '$', 'type');
+    if (schema.required !== undefined && (!Array.isArray(schema.required)
+      || schema.required.some((k) => typeof k !== 'string' || !k) || new Set(schema.required).size !== schema.required.length)) {
+      bad('schema_invalid', '$.required', 'required');
     }
     if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') {
-      invalid('$.additionalProperties', '只接受 boolean（且不参与校验）');
+      bad('schema_invalid', '$.additionalProperties', 'additionalProperties');
     }
-    if (schema.properties !== undefined) {
-      if (typeof schema.properties !== 'object' || schema.properties === null || Array.isArray(schema.properties)) {
-        invalid('$.properties', '必须是对象');
-      }
+    if (schema.properties !== undefined && (typeof schema.properties !== 'object' || schema.properties === null || Array.isArray(schema.properties))) {
+      bad('schema_invalid', '$.properties', 'properties');
+    } else if (schema.properties) {
       for (const [name, spec] of Object.entries(schema.properties)) {
         const at = `$.properties.${name}`;
-        if (typeof spec !== 'object' || spec === null || Array.isArray(spec)) invalid(at, '必须是对象');
-        for (const kw of Object.keys(spec)) {
-          if (!PROPERTY_SCHEMA_KEYWORDS.includes(kw)) {
-            fail(at, kw, kw === 'properties' || kw === 'items' ? '本内核不递归校验子结构' : undefined);
-          }
-        }
-        checkAnnotations(spec, at);
-        if (spec.type !== undefined && !JSON_SCHEMA_TYPES.includes(spec.type)) {
-          invalid(`${at}.type`, `必须是 ${JSON_SCHEMA_TYPES.join('/')} 之一`);
-        }
+        if (typeof spec !== 'object' || spec === null || Array.isArray(spec)) { bad('schema_invalid', at, name); continue; }
+        for (const kw of Object.keys(spec)) if (!PROPERTY_SCHEMA_KEYWORDS.includes(kw)) bad('schema_unsupported', at, kw);
+        annotations(spec, at);
+        if (spec.type !== undefined && typeMatches(spec.type, null) === null) bad('schema_unsupported', `${at}.type`, 'type');
       }
     }
+    return out;
   }
 
   /**
@@ -1341,7 +1343,7 @@ class Core extends EventEmitter {
    * input_schema 子集校验（与 permissions 无关，声明了就必须生效）。返回违规说明或 null。
    *
    * 判据是**声明**：声明了根 `type` 就判根类型，声明了 `required` 就判必填，声明了
-   * `properties.x.type` 就判该属性类型；没声明的一律不判 —— 不校验不等于全拒。
+   * `properties.x.type` 就判该属性类型（数组并集按任一成员匹配）；没声明的一律不判 —— 不校验不等于全拒。
    *
    * 两处都必须读 **own** 属性：`params[k]` 走原型链，`required:['__proto__']` 在 `params={}`
    * 上会被读成「给了，而且正好是 object」（`{}` 的 `__proto__` 就是继承来的那个对象，
@@ -1352,13 +1354,10 @@ class Core extends EventEmitter {
    */
   _schemaViolation(s, params) {
     if (!s) return null;
-    const t = params === null ? 'null' : Array.isArray(params) ? 'array' : typeof params;
-    // ① 根类型。`integer` 不是 `typeof` 的取值，必须走 Number.isInteger，否则合法整数也被拒。
-    if (s.type) {
-      const ok = s.type === 'integer' ? Number.isInteger(params) : t === s.type;
-      if (!ok) {
-        return `参数根类型应为 ${s.type}${s.type === 'object' ? '（本能力声明了结构化输入契约）' : ''}，实际 ${t}`;
-      }
+    const t = valueTypeOf(params);
+    // ① 根类型（含 draft-07 的数组并集）：判得了就真判，判不了（null）留给 `_schemaIssues` 记账。
+    if (s.type !== undefined && typeMatches(s.type, params) === false) {
+      return `参数根类型应为 ${typeLabel(s.type)}${s.type === 'object' ? '（本能力声明了结构化输入契约）' : ''}，实际 ${t}`;
     }
     // ② 声明了结构化契约（required/properties）却没声明根 type 时，根仍必须是对象。
     const structured = Array.isArray(s.required) || (s.properties && typeof s.properties === 'object');
@@ -1389,14 +1388,12 @@ class Core extends EventEmitter {
       if (!('value' in d)) return `参数 '${k}' 是访问器（只接受纯数据输入）`;
       const v = d.value;
       if (v === undefined) return `参数 '${k}' 为 undefined（JSON 无此值）`;
-      if (!spec?.type) continue;
-      const vt = Array.isArray(v) ? 'array' : v === null ? 'null' : typeof v;
-      // integer 必须 Number.isInteger：接受任意 number 时 1.5 会放行。
-      if (spec.type === 'integer') {
-        if (!Number.isInteger(v)) return `参数 '${k}' 应为 integer，实际 ${vt}${typeof v === 'number' ? ` ${v}（非整数）` : ''}`;
-        continue;
+      if (spec.type === undefined) continue;
+      // 判不了的类型（拼错、空数组）：只记账、不拦 —— 记账与执行必须是同一个结论。
+      if (typeMatches(spec.type, v) === false) {
+        const vt = valueTypeOf(v);
+        return `参数 '${k}' 应为 ${typeLabel(spec.type)}，实际 ${vt}${typeof v === 'number' && !Number.isInteger(v) ? ` ${v}（非整数）` : ''}`;
       }
-      if (vt !== spec.type) return `参数 '${k}' 应为 ${spec.type}，实际 ${vt}`;
     }
     return null;
   }
@@ -1592,7 +1589,10 @@ class Core extends EventEmitter {
     const out = [];
     for (const [id, cap] of this._capabilities) {
       if (prefix != null && !id.startsWith(prefix)) continue;
-      out.push({ id, owner: cap?.owner ?? null, provider: cap?.provider ?? null });
+      const row = { id, owner: cap?.owner ?? null, provider: cap?.provider ?? null };
+      // 只在**确实有**未生效声明时出现：空数组不进投影，免得每个能力都多一个恒空字段。
+      if (cap?.schema_unvalidated?.length) row.schema_unvalidated = cap.schema_unvalidated.map((i) => i.keyword);
+      out.push(row);
     }
     return out;
   }

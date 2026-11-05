@@ -62,6 +62,18 @@ node -p "require('tusunsun/package.json').version"
 6. `node scripts/release-gate.mjs` 双形态各跑一次，数字**分开记**
 7. 打 tag：`git tag -a v<版本> -m "..."`，只给公开版打
 
+### 跑门禁之前：三条环境前提（缺了会红，但不是产品缺陷）
+
+门禁开头会打一段 `[env]` 自检；看到它报红先对这三条，**不要直接改断言**：
+
+| 前提 | 不满足时的表现 | 正确做法 |
+|---|---|---|
+| 能分配 pty（`/dev/ptmx` 可开） | TUI 的 pty 门禁 FAIL（`script: 创建伪终端失败: 权限不够`） | 在宿主 shell 里跑。agent 的文件沙箱（workspace-write）会拦 `/dev/ptmx`：那不是产品缺陷 |
+| 找得到 Chromium（`~/.cache/ms-playwright/**/chrome-headless-shell` 或 `TUSUNSUN_CHROME_PATH`） | 浏览器 E2E SKIP（`未找到 Chromium 系可执行文件`） | 装 `chrome-headless-shell`，或显式设 `TUSUNSUN_CHROME_PATH` |
+| npm 缓存可写 | `npm error ... EACCES ~/.npm/_logs` | 用 `npm_config_cache=<可写目录>` 覆盖，**不要重定向 HOME** —— 重定向 HOME 会让上一条的 Chromium 找不到 |
+
+**同一棵树，数字的差别可能全在这三条上**：先看 `[env]` 自检，再判断红的是产品还是环境。
+
 ### 两条不要做的事
 
 - **不要复用内部轨道已经用过的号**。哪怕内容完全不同，`0.16.0` 这个名字在内部轨道上

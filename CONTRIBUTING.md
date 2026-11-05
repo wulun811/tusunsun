@@ -15,7 +15,7 @@
 
 ## 修改前先确认范围
 
-- 微内核为 `src/core/`（八文件），当前 **4889 行、预算上限 4889、260153 字节**；其余全部在 `plugins/`，**不属于**这份行数预算。
+- 微内核为 `src/core/`（八文件），当前 **4896 行、预算上限 4896、261345 字节**；其余全部在 `plugins/`，**不属于**这份行数预算。
 - **`src/builtin/` 在 v0.9.25 已并入 `plugins/`**，树里不再有这个目录。因此"加功能"通常不该动 `src/core/`：安全判据（`plugins/_lib/danger-patterns.js`）、执行器（`plugins/tool-executor.js`）、软闸（`plugins/_lib/destructive-gate.js`）都是插件。先把东西放进插件层，确实需要改内核语义时再抬预算——抬之前先看 `scripts/core-limits.mjs` 的记录格式，每次抬升都要写明增量来源，并在 `docs/adr/ADR-10-core-line-budget.md` 留一行。
 - 运行时 npm 依赖为 0，第三方 `ws` 以内置副本随包。插件可以有依赖，但新增依赖会改变分发与离线安装边界，需明确记录并验证。
 - 当前定位与未承诺能力见 [README](README.md) 和 [选型说明](docs/positioning-and-pi.md)。不能把会话保存写成任务恢复，把工作目录边界写成 OS 沙箱。

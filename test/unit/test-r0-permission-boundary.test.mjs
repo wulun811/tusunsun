@@ -371,17 +371,20 @@ export async function setup(runner) {
     }
   });
 
-  runner.test('R0-28/I【门禁】不支持的（尤其安全关键）schema 关键字在注册时具名拒绝', () => {
+  runner.test('R0-28/I【门禁】不支持的（尤其安全关键）schema 关键字：登记成功但逐条记成未生效约束', () => {
     const core = newCore();
+    const warns = [];
+    core.log = (level, msg) => { if (level === 'warn') warns.push(String(msg)); };
     for (const kw of ['pattern', 'enum', 'const', 'minimum', 'maximum', 'format', 'items', '$ref', 'oneOf']) {
       const spec = { type: 'string' };
       spec[kw] = kw === 'items' ? [] : kw === 'enum' ? ['a'] : kw === 'oneOf' ? [] : kw === 'minimum' || kw === 'maximum' ? 1 : kw === '$ref' ? '#/x' : 'v';
-      let threw = null;
-      try {
-        core.registerCapability(`cap.${kw}`, { handler: () => 'x', owner: 'p', input_schema: { type: 'object', properties: { s: spec } } });
-      } catch (e) { threw = e; }
-      assert(threw != null, `关键字 '${kw}' 应在注册时被具名拒绝，不得静默忽略`);
-      assert(/schema_unsupported/.test(String(threw?.message)), `应具名 schema_unsupported，实际：${threw?.message}`);
+      const id = `cap.${kw}`;
+      core.registerCapability(id, { handler: () => 'x', owner: 'p', input_schema: { type: 'object', properties: { s: spec } } });
+      const seen = (core._capabilities.get(id)?.schema_unvalidated || []).map((i) => i.keyword);
+      assert(seen.includes(kw), `关键字 '${kw}' 必须被记成未生效约束（不得静默忽略），实际 ${JSON.stringify(seen)}`);
+      const row = core.listCapabilities().find((c) => c.id === id);
+      assert(row?.schema_unvalidated?.includes(kw), `listCapabilities 必须能枚举出 '${kw}' 未生效`);
     }
+    assert(warns.some((w) => /\[schema\]/.test(w) && /未生效/.test(w)), `必须留下具名告警，实际 ${JSON.stringify(warns)}`);
   });
 }

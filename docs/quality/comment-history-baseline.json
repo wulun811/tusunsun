@@ -146,7 +146,7 @@
       "history": 8
     },
     "plugins/gateway.js": {
-      "comments": 188,
+      "comments": 190,
       "history": 4
     },
     "plugins/haotian-lite.js": {
@@ -625,6 +625,12 @@
         "plugins/context-manager.js comments 56 → 66",
         "plugins/gateway.js comments 182 → 188",
         "plugins/tool-executor.js comments 773 → 776"
+      ]
+    },
+    {
+      "at": "2026-11-05T11:33:39.564Z",
+      "entries": [
+        "plugins/gateway.js comments 188 → 190"
       ]
     }
   ]

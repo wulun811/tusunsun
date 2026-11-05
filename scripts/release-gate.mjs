@@ -21,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CORE_MAX_LINES } from './core-limits.mjs';
 // 判定规则单一真相：`scripts/gate-verdict.mjs`（可单测、可被门禁自检验证）。
 import { countFromOutput, verdictFor } from './gate-verdict.mjs';
@@ -57,6 +57,39 @@ const env = {
   repeat: REPEAT,
   at: new Date().toISOString(),
 };
+
+// ── 环境前置自检：把“跑不了”与“跑砸了”分开 ─────────────────────────────────
+// 三类环境缺陷都以**红**的形态出现，但它们与产品无关。门禁不因此改判（没有 pty 就是
+// 真的没验），但必须先把话说清楚 —— 否则下一个人要么把它当产品缺陷去“修”，
+// 要么反过来改断言把它“改绿”。历史上这两个坑都踩过。
+const PTY = (() => {
+  if (process.platform !== 'linux') return { ok: true, note: '非 Linux，pty 驱动方式不适用' };
+  const r = spawnSync('script', ['-qec', ':', '/dev/null'], { encoding: 'utf8' });
+  if (r.status === 0) return { ok: true, note: 'script -qec 可用' };
+  const tail = String(r.stderr || '').trim().split('\n').filter(Boolean).pop();
+  return { ok: false, note: tail || `script exit=${r.status}` };
+})();
+const BROWSER = await (async () => {
+  try {
+    const m = await import(pathToFileURL(join(ROOT, 'test', 'lib', 'cdp.mjs')).href);
+    const p = m.findBrowser();
+    return { ok: !!p, note: p || '未找到 Chromium（可设 TUSUNSUN_CHROME_PATH）' };
+  } catch (e) { return { ok: false, note: e.message }; }
+})();
+env.pty = PTY;
+env.browser = BROWSER;
+if (!PTY.ok || !BROWSER.ok) {
+  console.log('[env] 环境前置不满足 —— 下面的红/跳过先别当产品缺陷看：');
+  if (!PTY.ok) {
+    console.log(`  · 分配不了 pty（${PTY.note}）⇒ TUI 的 pty 门禁会 FAIL。`);
+    console.log('    常见成因：在 agent 文件沙箱里跑（/dev/ptmx 被拒 EACCES）。请在有 /dev/ptmx 的宿主 shell 里跑。');
+  }
+  if (!BROWSER.ok) {
+    console.log(`  · 找不到 Chromium（${BROWSER.note}）⇒ 浏览器 E2E 会 SKIP。`);
+    console.log('    常见成因：为了解决 npm 缓存权限而重定向了 HOME —— 那会让 ~/.cache/ms-playwright 找不到。');
+    console.log('    正确做法：用 npm_config_cache=<可写目录> 覆盖缓存，不要改 HOME。');
+  }
+}
 
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const items = [];

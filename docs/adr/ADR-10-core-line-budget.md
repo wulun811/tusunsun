@@ -1,7 +1,7 @@
 # ADR-10：核心行数预算与"超额必须批准"的程序
 
 - 状态：**已采纳**（v0.14.1），取代此前散落在 `scripts/core-limits.mjs` 注释里的逐次记录
-- 影响面：`src/core/`（8 文件，当前 4889 行）、`scripts/core-limits.mjs`、`scripts/line-check.js`、
+- 影响面：`src/core/`（8 文件，当前 4896 行）、`scripts/core-limits.mjs`、`scripts/line-check.js`、
   `package.json` 的 `description`、`README.md`、`docs/architecture/microkernel.md`
 - 决策者：维护者（用户），执行方起草
 - 触发：专家 0.14.0 复审 §5 明确要求"行数增加 524 行应有 ADR 明确 2746 的由来、预算上限
@@ -196,3 +196,4 @@ git diff -U0 src/core/ | grep '^+' | grep -v '^+++' | sed 's/^+//' | grep -vE '^
   三处 return 抽公共字段、`_loadSingle` 转发可删）。**没有一条执行**，因为它们
   都要求"功能全绿后单独一轮做重构"。本 ADR 不为它们背书，只登记它们仍然欠着。
 | v0.16.0-rc.34 | 4857 → **4889** | 专家 rc.33 源码级复审 K33-A/K33-B 的收口。**核心 +35**，只为一件事：「声明了的合同，每条执行路径都必须真的读」。`_schemaViolation` 从 `params[k]` 改成 `Object.getOwnPropertyDescriptor` 读**一次** own 属性 —— 修正前 `required:['__proto__']` 在 `params={}` 上被原型链读成「给了、而且正好是 object」，handler 照跑，`constructor`/`toString` 同理；访问器参数在这一步具名拒绝（准入结论不能由输入自己决定）。根 `type` 真的执行：修前只在 required/properties 存在时才要求 object，`{type:'object'}` 传 'str'、`{type:'string'}` 传对象都放行并执行。参数根加纯数据边界：类实例/Proxy 拒，`Object.create(null)` 放行。插件侧（不计核心预算）：`close()` 把「执行资格已撤销 / 正在清理 / 清理已完成」拆成三个事实 —— `closed` 与 `cleanup_done` 同源，未做完只发 `cell.closing`（带 `cleanup_pending`），`cell.closed` 只在 清理真完成时发一次。判据是 `test/unit/test-rc34-k33-schema-own-root-and-close-facts.test.mjs` 的 17 条先红后绿。 |
+| v0.20.2 | 4889 → **4896** | schema 支持面改口径：注册期不再因白名单外的关键字拒绝能力，改为「照常登记 + 具名告警 + 逐条记进 `schema_unvalidated`」；随后 `type` 认 draft-07 数组并集、判不了的只记账不执行。净增 +7 行（其余增量由 R0-175～R0-178 的注释压缩抵扣），字节 260153 → **261345**。判据 `test/unit/test-r0-177-…`（4 条）与 `test/unit/test-r0-179-…`（5 条）。 |

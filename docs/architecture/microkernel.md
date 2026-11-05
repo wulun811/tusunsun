@@ -1,6 +1,6 @@
 # 微内核架构
 
-> 微内核 4889 行代码提供装配机制；模型、对话与工具由包内其他组件实现
+> 微内核 4896 行代码提供装配机制；模型、对话与工具由包内其他组件实现
 >
 > 行数口径：`src/core/` 下每个 `.js` 的 `content.split('\n').length` 求和（即"换行符数 + 文件数"，
 > 比 `wc -l` 多算每个文件末尾那一行）。口径与 `test/unit/test-r0-65-*/E4` 的门禁一致——
@@ -168,14 +168,14 @@ const result = await core.runPipeline('inbound', message);
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | core.js | 2311 | 事件总线、命令总线、能力注册、服务注册表、中间件管道、日志分流（stderr 人读 / stdout JSONL） |
-| plugin-manager.js | 870 | 插件装配、懒加载索引（含把 lazy 声明发布给准入闸门）、热重载（唯一实现 `_reloadPlugin`）、闲置回收 |
+| plugin-manager.js | 877 | 插件装配、懒加载索引（含把 lazy 声明发布给准入闸门）、热重载（唯一实现 `_reloadPlugin`）、闲置回收 |
 | dependency-resolver.js | 417 | 多宝道人 — DAG 依赖解析 |
 | lifecycle-manager.js | 577 | 准提道人 — 七步安全卸载 + **per-owner 独占区**（`runExclusive`，ALS 可重入）：同一 owner 的 load/unload/reload 串行化 |
 | scene-controller.js | 460 | 接引道人 — 场景调度（五段式；整段进 `__scene__` 独占区；无变化不重写盘；`show()` 委托 `plugins/scene-inspect.js`） |
 | plugin-meta.js | 131 | 插件元数据提取 |
 | json5-loader.js | 88 | 场景配置加载 |
 | env.js | 35 | 环境变量读取/写入（规范名 `TUSUNSUN_*`）+ 日志分流判据 |
-| **合计** | **4889** | 预算上限 **4889**（v0.15.0：+129 行 —— 专家 0.14.1-post 复审的 INV-01 与 SC-01～05：拒绝码按执行阶段分层（ADR-13，含 API 影响清单）、场景持久事实 `_persistedScene`、默认配置与 activeScene 一次落盘、deferred 早返回不再报 verified。v0.14.1：+134 行 —— 专家 0.14.0 复审的五条可复现反例 R-014-1～5：ALS 过期租约（判据从 `Set.has(key)` 改为 `{active, manager, key}`）、队列 Map 回收（存 `tail` 比 `tail`）、场景身份与插件集合分开算、必需 include 缺失阻断、Verify 改为核对完整必需集合（排除 lazy）；另加 CLI 推迟装配的显式分流（`deferAssembly`），因为 CLI 不启动内核，放松 Verify 只会让 R-014-5 复发。**本轮同时更正了两处预算同步错误**：v0.14.0 曾把 lifecycle-manager 写成 289、scene-controller 写成 256，而当时实测就是 318/341 ⇒ v0.14.0 的 `npm run check` 当时即为红，只是没被发布流程拦住。行数预算的**唯一权威说明**见 `docs/adr/ADR-10-core-line-budget.md`。v0.14.0：+136 行，其中非注释代码约 55 行，用于 §6.2 串行化、§5.3 attempt token 与 I-01 唯一跃迁写入者；v0.12.0 内核精修 P4 后累计 +425 行：P1 +55（执行切面）、P2 +118（生命周期归一）、P3 +94（场景五段式）、P4 +158（SemVer/JSON5 真解析器 + 权属 + 依赖方向）。P2 的核心是 `Core.start` 整条委托给 `lc.load` —— 装配入口 4→3、`plugin.state` 写入点 8→5、状态跃迁只剩 Lifecycle 一个写入者；代价是 `load()` 从 26 行涨到 47 行并新增 `_stopOrder()`/`describeLazyLoad()`。落地计划原估 P2 为 +27，实际 +118，差额与原因写在 `scripts/core-limits.mjs`。P1 部分：全部来自 K-01/K-02/K-06/K-07/K-13b 五条反例的修复：`callCapability`/`command` 合流为唯一 `_dispatchCapability`（超时不再把 in-flight 归零，信封加 `execution_outcome`/`still_running_at_return`）、schema 根类型判据、override 全字段继承、`releaseCapability` 拒绝匿名让渡、`confirm` 无 TTY 时不再自动同意。**落地计划原估这一批净减 10 行，实际净增 55**——预估漏算了加性字段与三分支证据的开销，已按既定口径抬限额并写明原因，明细见 `scripts/core-limits.mjs`。原文：v0.9.33 的 E1 共 +35 行：eager 插件登记来源路径（EV-02）、`plugin.reload` 与 watch 两处内联重载合成唯一实现 `_reloadPlugin`（EV-01，两处原本各自出错：一份停两次、一份完全不 init）、`unload` 归位 `_lazyLoaded`/`_pending`（EV-03，修前两套状态互相矛盾且不可恢复）。v0.9.31 共 +4 行，全部是 P0 修复、无一行重构：① `freezeCapability` 广播 `core:capability.frozen`（执行器缓存命中路径不经过 core，看不见冻结，实测冻结后仍返回 succeeded）；② `plugin-manager` 模块实例标识（`import(path)` 同路径恒返同一实例 ⇒ 双 Core 共享插件对象，实测 A 的调用写进 B 的目录并返回 succeeded）。另有 R0-150 的 `getCapabilityOutputSchema`（+4 行，让 `output_schema` 偏差可观测）与 R0-151 的 `override` 继承规则（+4 行，防安全声明静默丢失）。上限按 `scripts/core-limits.mjs` 的既有口径抬到 2150，**现余量 5 行**。v0.9.25 曾 +1 行：`plugin-manager` 里记下"合并后去重逻辑为何仍保留"。v0.9.24 曾从 2080 抬到 2100，增量是公开枚举接口 `listCapabilities`；R0-120 曾首次**下调** 2556 → 2080，原因见下方「构成」一节） |
+| **合计** | **4896** | 预算上限 **4896**（v0.20.2：4889 → 4896 —— schema 登记与 `type` 并集判据，净增 +7；R0-175～R0-178 的注释压缩抵扣了其余增量。v0.15.0：+129 行 —— 专家 0.14.1-post 复审的 INV-01 与 SC-01～05：拒绝码按执行阶段分层（ADR-13，含 API 影响清单）、场景持久事实 `_persistedScene`、默认配置与 activeScene 一次落盘、deferred 早返回不再报 verified。v0.14.1：+134 行 —— 专家 0.14.0 复审的五条可复现反例 R-014-1～5：ALS 过期租约（判据从 `Set.has(key)` 改为 `{active, manager, key}`）、队列 Map 回收（存 `tail` 比 `tail`）、场景身份与插件集合分开算、必需 include 缺失阻断、Verify 改为核对完整必需集合（排除 lazy）；另加 CLI 推迟装配的显式分流（`deferAssembly`），因为 CLI 不启动内核，放松 Verify 只会让 R-014-5 复发。**本轮同时更正了两处预算同步错误**：v0.14.0 曾把 lifecycle-manager 写成 289、scene-controller 写成 256，而当时实测就是 318/341 ⇒ v0.14.0 的 `npm run check` 当时即为红，只是没被发布流程拦住。行数预算的**唯一权威说明**见 `docs/adr/ADR-10-core-line-budget.md`。v0.14.0：+136 行，其中非注释代码约 55 行，用于 §6.2 串行化、§5.3 attempt token 与 I-01 唯一跃迁写入者；v0.12.0 内核精修 P4 后累计 +425 行：P1 +55（执行切面）、P2 +118（生命周期归一）、P3 +94（场景五段式）、P4 +158（SemVer/JSON5 真解析器 + 权属 + 依赖方向）。P2 的核心是 `Core.start` 整条委托给 `lc.load` —— 装配入口 4→3、`plugin.state` 写入点 8→5、状态跃迁只剩 Lifecycle 一个写入者；代价是 `load()` 从 26 行涨到 47 行并新增 `_stopOrder()`/`describeLazyLoad()`。落地计划原估 P2 为 +27，实际 +118，差额与原因写在 `scripts/core-limits.mjs`。P1 部分：全部来自 K-01/K-02/K-06/K-07/K-13b 五条反例的修复：`callCapability`/`command` 合流为唯一 `_dispatchCapability`（超时不再把 in-flight 归零，信封加 `execution_outcome`/`still_running_at_return`）、schema 根类型判据、override 全字段继承、`releaseCapability` 拒绝匿名让渡、`confirm` 无 TTY 时不再自动同意。**落地计划原估这一批净减 10 行，实际净增 55**——预估漏算了加性字段与三分支证据的开销，已按既定口径抬限额并写明原因，明细见 `scripts/core-limits.mjs`。原文：v0.9.33 的 E1 共 +35 行：eager 插件登记来源路径（EV-02）、`plugin.reload` 与 watch 两处内联重载合成唯一实现 `_reloadPlugin`（EV-01，两处原本各自出错：一份停两次、一份完全不 init）、`unload` 归位 `_lazyLoaded`/`_pending`（EV-03，修前两套状态互相矛盾且不可恢复）。v0.9.31 共 +4 行，全部是 P0 修复、无一行重构：① `freezeCapability` 广播 `core:capability.frozen`（执行器缓存命中路径不经过 core，看不见冻结，实测冻结后仍返回 succeeded）；② `plugin-manager` 模块实例标识（`import(path)` 同路径恒返同一实例 ⇒ 双 Core 共享插件对象，实测 A 的调用写进 B 的目录并返回 succeeded）。另有 R0-150 的 `getCapabilityOutputSchema`（+4 行，让 `output_schema` 偏差可观测）与 R0-151 的 `override` 继承规则（+4 行，防安全声明静默丢失）。上限按 `scripts/core-limits.mjs` 的既有口径抬到 2150，**现余量 5 行**。v0.9.25 曾 +1 行：`plugin-manager` 里记下"合并后去重逻辑为何仍保留"。v0.9.24 曾从 2080 抬到 2100，增量是公开枚举接口 `listCapabilities`；R0-120 曾首次**下调** 2556 → 2080，原因见下方「构成」一节） |
 
 > 这张表由门禁核对（`test/unit/test-r0-103-*` T8：逐文件数字 + 合计都必须等于实况），
 > 历史上它曾停在 1695 行/7 个模块而与实况脱节——修改源码时仍须同步文档，并以检查结果确认一致。
@@ -217,9 +217,9 @@ const result = await core.runPipeline('inbound', message);
 合并后的布局：
 
 ```text
-src/core/          ← 唯一受行数预算约束的内核（4889 / 4889）
+src/core/          ← 唯一受行数预算约束的内核（4896 / 4896）
 src/bootstrap/     ← 启动引导：解析 argv、选场景、拉起 PluginManager（不受行数预算）
-plugins/           ← 唯一的插件面（80 个 js/mjs，24 202 行；2026-10-28 实测）
+plugins/           ← 唯一的插件面（80 个 js/mjs，26 175 行；2026-11-03 实测）
   *.js             ← 40 个顶层文件（含 recycle-advisor 参考实现）
   tools/           ← 工具插件家族（10 个）
   _lib/            ← 内部模块容器（不是插件目录；`_` 前缀由 resolvePluginDirs 真的跳过）
@@ -228,8 +228,8 @@ plugins/           ← 唯一的插件面（80 个 js/mjs，24 202 行；2026-10
 两个常被误解的点：
 
 1. **行数门禁只覆盖 `src/core/` 这一层。** 门禁只统计 `src/core/*.js`。
-   `src/` 合计 5229 行（core 4889 + bootstrap 340），`plugins/` **24 202 行 / 80 文件**
-   （2026-10-28 实测，口径：`find plugins \( -name '*.js' -o -name '*.mjs' \) | xargs wc -l`）——
+   `src/` 合计 5236 行（core 4896 + bootstrap 340），`plugins/` **26 175 行 / 80 文件**
+   （2026-11-03 实测，口径：`find plugins \( -name '*.js' -o -name '*.mjs' \) | xargs wc -l`）——
    单是插件面就是内核的 5 倍，
    另有 `vendor/liuhe-lite/` 7 201 行第三方代码（**可选器官，默认不装配**）——
    所以"核心行数纹丝不动"只在 `src/core/` 范围内成立，

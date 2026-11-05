@@ -576,16 +576,13 @@ export default async function (runner) {
     core.log = () => {};
     const forbidden = [['pattern', '^a+$'], ['$ref', '#/x'], ['minimum', 1], ['enum', ['a']]];
     for (const [kw, val] of forbidden) {
-      // 静态写法：必须被支持面校验具名拒绝（这是 R0-28 的既有判据，此处确认没被本轮改动放松）
-      let stat = null;
-      try {
-        core.registerCapability(`test.static.${kw}`, {
-          owner: 'test', handler: async () => 1,
-          input_schema: { properties: { x: { type: 'string', [kw]: val } } },
-        });
-        stat = 'ACCEPTED';
-      } catch (e) { stat = e.code || 'schema_unsupported'; }
-      assert(/schema_unsupported/.test(String(stat)), `${kw} 静态写法必须 schema_unsupported，实际 ${stat}`);
+      // 静态写法：登记成功，但必须被记成未生效约束（支持面不再拒绝登记，R0-177 守）
+      core.registerCapability(`test.static.${kw}`, {
+        owner: 'test', handler: async () => 1,
+        input_schema: { properties: { x: { type: 'string', [kw]: val } } },
+      });
+      const stat = (core._capabilities.get(`test.static.${kw}`)?.schema_unvalidated || []).map((i) => i.keyword);
+      assert(stat.includes(kw), `${kw} 静态写法必须被记成未生效约束，实际 ${JSON.stringify(stat)}`);
 
       // 动态写法：getter 换值一律连登记都进不去
       let dyn = null;
@@ -651,10 +648,13 @@ export default async function (runner) {
   runner.test('rc.32/RC31-C1 支持面校验读的是已冻结副本（不是原对象）', async () => {
     const fs = await import('node:fs/promises');
     const src = await fs.readFile(join(ROOT, 'src/core/core.js'), 'utf8');
-    const chk = src.match(/_assertSchemaSupported\(id,\s*([A-Za-z_$][\w$]*),\s*'input_schema'\)/);
-    assert(chk, '找不到 input_schema 的支持面校验');
-    assertEquals(chk[1], 'lockedInput',
-      `支持面校验必须读已冻结的副本（读原对象 = 审一个、存另一个），实际读 ${chk[1]}`);
+    const chk = src.match(/_schemaIssues\(([A-Za-z_$][\w$]*),\s*'input_schema'\)/);
+    assert(chk, '找不到 input_schema 的支持面体检调用');
+    assertEquals(chk[1], 'finalInput',
+      `支持面体检必须读已冻结/已继承的副本（读原对象 = 审一个、存另一个），实际读 ${chk[1]}`);
+    assert(/const finalInput = inherited\(input_schema, 'input_schema', lockedInput\)/.test(src),
+      'finalInput 必须由冻结副本 lockedInput 派生');
+    assert(!/_schemaIssues\(\s*input_schema\b/.test(src), '不得直接体检调用方的原对象');
     assert(!/_declImpurity\s*\(/.test(src),
       '`_declImpurity` 必须已被删除：两趟遍历正是"审一个、存另一个"的形状');
   });

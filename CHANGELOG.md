@@ -2,8 +2,9 @@
 
 ## v0.20.2 (2026-11-01)：Y025 软闸的模型闭环
 
-> 公开轨道当前版。`src/core/` 一行未改（8 文件 / 4889 行 / 260153 B）；
-> 只修外围链路：执行器已经算出的影响面，要送到模型能看见、能按合同重试的位置。
+> 公开轨道当前版。本版最终 `src/core/` **8 文件 / 4896 行 / 261345 B**：Y025 那批一行未改，
+> 内核修复净增 0（注释压缩抵扣），schema 支持面与 `type` 并集判据 +7 行。
+> 主线仍是「执行器已经算出的影响面，要送到模型能看见、能按合同重试的位置」。
 >
 > **发布裁决：Developer Preview（可信本地）**，本段不声称取得任何外部验收。
 
@@ -28,11 +29,11 @@
 
 | 形态 | 单元测试 | 集成 | 冒烟 |
 |---|---|---|---|
-| **开发树**（公开树源码检出，Linux x64 / Node 22.22.2） | 1521 总 / 1521 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 |
-| **npm 制品**（解包后） | 1521 总 / 1511 通过 / 0 失败 / 10 跳过 | 63/63 | 2/2 |
+| **开发树**（公开树源码检出，Linux x64 / Node 22.22.2） | 1537 总 / 1537 通过 / 0 失败 / 0 跳过 | 63/63 | 2/2 |
+| **npm 制品**（解包后） | 1537 总 / 1527 通过 / 0 失败 / 10 跳过 | 63/63 | 2/2 |
 
-- 开发树 27 套探针全部 rc=0；制品 **439 个文件 / 约 1.82 MB**；`src/core/` 8 文件 / 4889 行 / 260153 B 未变。
-- 三平台 CI run `41372423824`：Ubuntu 1521/1521；macOS 1521 总 / 1516 通过 / 5 跳过（`/proc` 依赖，不折算通过）；Windows gates + windows-release + install-acceptance 全绿；`package` 作业在净室安装后实测 1521 总 / 1511 通过 / 10 跳过。
+- 开发树 27 套探针全部 rc=0；制品 **445 个文件 / 1,922,426 B（约 1.83 MB）**；`src/core/` 8 文件 / 4896 行 / 261345 B。
+- 三平台 CI：Ubuntu / macOS / package / Windows 本轮全绿；run 号与逐平台数字在 CI 完成后回填（不预估、不折算）。
 - 计数口径：单测按 `test/unit/*.test.mjs` 注册的用例数计；集成按 `test/integration/*.test.mjs` 注册的用例数计；冒烟按套件用例计。开发树与制品分开报，不互相顶替。
 - 验收脚本退出码三档：`0` = 通过；`1` = 有失败项；`2` = **通过数为 0**（含**找不到 npm** 或没有可跑用例）。跳过一律记 NOT_RUN，**不折算**为通过。
 
@@ -72,7 +73,31 @@
 - 文档：`docs/guides/quick-start.md` 的控制面示例与 `docs/reference/cell-api.md` 的「复用与进程成本」。
 - 判据：`test/unit/test-r0-174-context-endpoint.test.mjs`（4 条：读数同源 / 400-404-200-403 / 压缩变小且摘要不写回 / 无摘要时 409 不动会话）。
 
-### 7. 补充：Windows 本地门禁的路径归一化
+### 7. 补充：内核装载与停机路径（R0-175 / R0-176 / R0-178）
+
+| 断点 | 事实 | 修法 |
+|---|---|---|
+| 网关停机不执行插件 `stop()` | 网关的 `core.stop` 分支调 `core.shutdown?.()`，而本内核没有 `shutdown`；可选链把整段停机静默成空操作，紧接着 `process.exit(0)` | 改调 `core.stop()`（与 CLI 信号路径同一个），失败记 error |
+| 装载失败不可见 | eager / lazy 插件 import 或索引失败只留一行日志；插件没进 `plugins` 表，readiness 扫表仍报 `READY` | 失败落进 `core._startFailures`（`phase:'load'`，与 init 失败同一本账），readiness 因此 `degraded` 并点名该文件；好插件不连坐 |
+| 只提供 service 的 lazy 插件永不可用 | `getService` 是同步只读、不触发懒加载；准入却把 lazy 的服务算作可用 provider（放行且无告警） | 准入判 `degraded` 并单独点名（`serviceOnlyLazy`），启动时打一条具名 warn；同时有能力的 lazy 插件不误伤 |
+
+- 判据：`test/unit/test-r0-178-gateway-stop.test.mjs`（3 条）、`test-r0-176-load-failure-visible.test.mjs`（1 条）、`test-r0-175-lazy-service-only.test.mjs`（3 条）。
+- 文档：`docs/guides/plugin-development.md` 增加「懒加载：只有能力名能触发它」与「装载失败与 readiness」。
+
+### 8. 补充：schema 支持面改为「登记 + 记账」，`type` 并集真判（R0-177 / R0-179）
+
+注册期不再因为 schema 里出现白名单外的关键字而拒绝整个能力：
+
+- `_schemaIssues` 按**整棵树**体检，逐条记成 `schema_unvalidated`（`{code,path,keyword,which,assertional}`）；
+  注册时打一条 `[schema]` 告警，`listCapabilities()` 可枚举未生效的关键字。
+- **执行面不变**：`required`、`type`、根类型、纯数据边界仍真判；`pattern` / `enum` / `items` 等仍不执行，需要时由插件自己校验。
+- `type` 认 draft-07 的数组并集（如 `['integer','null']`）：任一成员匹配即通过，`integer` 走 `Number.isInteger`；
+  判不了的声明（未知类型名、空数组）登记成功、只记账、**不再恒假**。同一处声明只记一条。
+- 判据：`test/unit/test-r0-177-schema-register-and-warn.test.mjs`（4 条）、`test/unit/test-r0-179-type-union.test.mjs`（5 条）；
+  既有契约用例按新口径改写（R0-170、rc.32、rc.33、R0-28/I），rc.33 探针同步。
+- 文档：`contracts/capability-identity-v1.md` §6、`docs/adr/ADR-14-schema-support-surface.md`、`docs/guides/plugin-development.md`。
+
+### 9. 补充：Windows 本地门禁的路径归一化
 
 - `scripts/core-dep-check.mjs` 先用 `join` 拼路径、再按 `'/'` 截前缀。Windows 下路径是反斜杠，
   前缀截不掉，`src/` 的 9 个文件会**同时**被报成「未归类」和「名单过期」，本地 `check:deps`
@@ -83,7 +108,7 @@
 - 判据：Windows 本地实跑 `node scripts/core-dep-check.mjs` rc=0；
   `test/unit/test-0.9.24-structural-and-interface-fixes.test.mjs` 8/8。
 
-### 8. 未做
+### 10. 未做
 
 - npm registry 发布：本版未执行 `npm publish`；等渠道配置与显式授权后再发。
 - `v0.20.2` git tag：等三平台 CI 绿后按发布清单处理，不在本提交里自行打 tag。

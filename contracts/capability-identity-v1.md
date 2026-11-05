@@ -100,23 +100,28 @@
 
 ### 6.1 支持的关键字（**整棵树的白名单**；own 属性与根类型自 rc.34 起真判）
 
-白名单就是实现真正会执行的那点东西。**不在表里的一律注册期具名拒绝**，不是"忽略"。
+白名单就是实现真正会执行的那点东西。**不在表里的不会被校验**：登记照常成功，但会留下具名
+告警，并逐条记进能力条目的 `schema_unvalidated`（见 6.2 与 ADR-14）。
 
 | 位置 | 关键字 | 语义 |
 |---|---|---|
-| 根 | `type` | **7 个 JSON 类型全部在运行期真判**（`integer` 走 `Number.isInteger`）。声明了就必须执行，不支持判断的类型不接受 |
+| 根 | `type` | **7 个 JSON 类型 + draft-07 的数组并集**（如 `['object','null']`）：任一成员匹配即通过；`integer` 走 `Number.isInteger`。声明了就必须执行；判不了的声明（未知类型名、空数组）不执行、只记账（见 6.2） |
 | 根 | `required: string[]` | 逐个判**own** 属性：`Object.getOwnPropertyDescriptor(params, k)` 存在且值不是 `undefined`；缺失即具名拒绝。原型链上的同名属性**不算提供** |
 | 根 | `properties` | 属性名 → 子表；**属性名是任意字符串**（`__proto__` / `constructor` / `toString` 都按普通键处理，只看 own） |
-| 属性子表 | `type` | 与实参运行时类型比对；`integer` 用 `Number.isInteger`（不能用 `typeof v === 'number'`，否则 `1.5` 放行） |
+| 属性子表 | `type` | 与实参运行时类型比对（同样支持数组并集，任一成员匹配）；`integer` 用 `Number.isInteger`（不能用 `typeof v === 'number'`，否则 `1.5` 放行） |
 | 根/子表 | `title`、`description`（字符串） | **纯注释**：不携带任何断言，因此允许出现；写成非字符串则拒绝（避免读者以为那里能放断言） |
 | 根 | `additionalProperties: boolean` | **仅允许出现，不参与校验**（no-op，不是已支持的约束） |
 
 **属性子表只有一层**：本内核不递归校验对象子结构，所以子表里再出现 `properties` / `items`
-一律拒绝 —— 那正是 rc.32 被专家击穿的地方（`properties.x.properties.admin.$ref` 被接受）。
+会记成「该位置的 `properties` 未生效」 —— 那正是 rc.32 被击穿的地方
+（`properties.x.properties.admin.$ref` 被接受且无人知道它没生效）。
 
 **根类型的判据是"声明"**：写了 `type` 就按它判；没写 `type` 但写了 `required`/`properties`
 即视为「声明了结构化输入契约」，此时 `params` 为 `null` / 字符串 / 数字 / 数组一律拒绝；
 两者都没写的能力**不校验入参**（不校验 ≠ 全拒：`42`、`'x'`、`null` 都照旧放行）。
+
+数组并集按任一成员判：`['object','null']` 下 `{}` 与 `null` 放行、`'x'` 拒绝；
+`['integer','null']` 下 `5`、`-3`、`null` 放行，`1.5`、`'x'`、`true` 拒绝。
 
 **只认 own 属性**：`required` 与 `properties.x.type` 都只看 `params` 自己的属性。
 `{}` 上没有 own 的 `__proto__`，所以 `required:['__proto__']` **不成立** ——
@@ -127,20 +132,28 @@
 拿它们当准入依据等于让输入自己决定校验结论。这是**准入判据的完整性**，不是安全隔离：
 同进程能拿到 `Core` 实例的代码本来就能绕过一切。
 
-### 6.2 注册时**具名拒绝**的关键字
+### 6.2 不在支持面内的关键字：**登记成功、逐条记账**
 
 `enum`、`const`、`oneOf`、`anyOf`、`allOf`、`not`、`pattern`、`format`、
 `minimum`、`maximum`、`exclusiveMinimum`、`exclusiveMaximum`、`multipleOf`、
 `minLength`、`maxLength`、`items`、`minItems`、`maxItems`、`uniqueItems`、`$ref`
 
-判定范围是**整棵树**（根 + 每个属性子表），并且拒绝理由里带**路径**
-（`$.properties.x`）与关键字名。rc.32 的实现只枚举 `properties` 的第一层，
-于是根上的 `$ref` 与深层嵌套的 `$ref` 都被接受并执行成功 —— 已修。
+判定范围是**整棵树**（根 + 每个属性子表），理由里带**路径**（`$.properties.x`）与关键字名。
+行为：
 
-**为什么拒绝而不是忽略**：这些关键字里有一批是**安全关键**的（`enum` 限值、
-`pattern` 形状、`minimum` 下界、`maxLength` 长度）。静默忽略等于「声明了但不执行」，
-调用方以为自己受约束、实际没有。fail-closed 的代价是一个注册期报错；
-fail-open 的代价是一个看起来有校验、实际裸奔的能力。
+1. 能力**照常登记**（插件不会因一个能力写宽了而装不上）；
+2. 注册时一条 `[schema]` 告警，列出路径与关键字，并标明是否含**能改变准入结论**的关键字；
+3. 逐条记进能力条目 `schema_unvalidated`（`{ code, path, keyword, which, assertional }`），
+   `listCapabilities()` 可枚举关键字列表；
+4. 能判的照旧真判 —— 放宽的只是**登记**，不是**执行**（`ENFORCED` 仍是 6.1 那张表）。
+
+**判不了的 `type` 走同一条路**：写成未知类型名（`'strng'`）或空数组时，登记成功、逐条记账
+（`assertional: true`），运行期**不执行**、也不把它判成恒假 ——「记账说不生效」与「执行恒拒」
+只能留一个（R0-179 修的就是后者）。
+
+**为什么不拒绝（旧口径）**：拒绝的单位是一个能力，代价是一整个插件。真实接入实测：7 个
+MCP 工具里 6 个因此装不上，只能各自写一遍「窄投影 + 自校验」，语义必然分叉。
+「声明了但没判」必须**可见**，但不必以插件消失为代价 —— 详细取舍见 ADR-14。
 
 ---
 
@@ -180,7 +193,7 @@ fail-open 的代价是一个看起来有校验、实际裸奔的能力。
 | §5 `releaseCapability` 不按字符串放权 | `IMPLEMENTATION_COUNTEREXAMPLE` | 仍是 `existing.owner !== owner` 字符串比较：声明 `owner` 相同即可释放他人能力。修它需要先设计「登记标识 / 受信释放入口」并改完调用点，见 ADR-08 修订节 |
 | §5 内部清场按装配账本 | 部分 `IMPLEMENTATION_PASS` | `discardAssemblyArtifacts(store)` 按记账 id 精确回收（装配失败路径）；但卸载路径仍走 `releaseCapabilitiesByOwner(pluginName)` 按名扫表 |
 | §5 宿主接管不得由名字推断 | `IMPLEMENTATION_PASS` | `takeover` 需 `claimant == null && opts.takeover === true`，并记 `_serviceTakeovers` |
-| §6 schema 支持面 | `IMPLEMENTATION_PASS` | 注册期 `_assertSchemaSupported` 按**整棵树**白名单具名拒绝；运行期 `_schemaViolation` 按**声明**逐条判（根 `type` 真判、`required`/属性类型只认 **own** 属性、参数根必须是纯数据）。证据：`test/unit/test-rc33-…`（支持面）+ `test/unit/test-rc34-k33-schema-own-root-and-close-facts.test.mjs`（own/根类型/纯数据，17 条先红后绿）+ 探针 `test/probes/rc34-k33-independent-repro.mjs`。边界：只覆盖 `registerCapability` 声明的 `input_schema`，不是外部安全隔离 |
+| §6 schema 支持面 | `IMPLEMENTATION_PASS` | 注册期 `_schemaIssues` 按**整棵树**体检并逐条记账（`schema_unvalidated` + 具名告警，ADR-14）；运行期 `_schemaViolation` 按**声明**逐条判（根 `type` 真判、`required`/属性类型只认 **own** 属性、参数根必须是纯数据）。证据：`test/unit/test-r0-177-…`（登记与记账）+ `test/unit/test-rc33-…`（支持面）+ `test/unit/test-rc34-k33-schema-own-root-and-close-facts.test.mjs`（own/根类型/纯数据，17 条先红后绿）+ 探针 `test/probes/rc34-k33-independent-repro.mjs`。边界：只覆盖 `registerCapability` 声明的 `input_schema`，不是外部安全隔离 |
 | §7 保留名在唯一入口拒绝 | `NOT_RUN` | 尚无跨入口（`loadOne` / `Core.register` / 场景）的统一保留名校验与正反例 |
 
 **这张表的用途是防止把规范读成实现。** 任何一项从 `COUNTEREXAMPLE` 变成 `PASS`，

@@ -181,7 +181,7 @@ async function probeClosePersistFail() {
   } finally { rmSync(base, { recursive: true, force: true }); }
 }
 
-/** R32-05：schema 支持面是整棵树的白名单。 */
+/** R32-05 / R0-177：schema 支持面体检覆盖整棵树，且**没生效的必须记账**（不是抛错）。 */
 async function probeSchemaWhitelist() {
   const base = tmp();
   try {
@@ -189,18 +189,22 @@ async function probeSchemaWhitelist() {
     const core = new Core({ stateDir: join(base, 'state-schema') });
     core.log = () => {};
     const cases = {
-      root_ref: { required: ['x'], properties: { x: { type: 'string' } }, $ref: '#/unsupported' },
-      nested_ref: { required: ['x'], properties: { x: { type: 'object', properties: { admin: { $ref: '#/unsupported' } } } } },
-      sub_pattern: { properties: { s: { type: 'string', pattern: '^a+$' } } },
+      root_ref: [{ required: ['x'], properties: { x: { type: 'string' } }, $ref: '#/unsupported' }, '$'],
+      nested_ref: [{ required: ['x'], properties: { x: { type: 'object', properties: { admin: { $ref: '#/unsupported' } } } } }, '$.properties.x'],
+      sub_pattern: [{ properties: { s: { type: 'string', pattern: '^a+$' } } }, '$.properties.s'],
     };
     const out = {};
-    for (const [label, schema] of Object.entries(cases)) {
+    let pass = true;
+    for (const [label, [schema, at]] of Object.entries(cases)) {
+      let rec = null;
       try {
         core.registerCapability(`probe.${label}`, { owner: 'probe', handler: async (x) => x, input_schema: schema });
-        out[label] = 'ACCEPTED';
-      } catch (e) { out[label] = e.code || String(e.message).slice(0, 40); }
+        rec = core._capabilities.get(`probe.${label}`);
+      } catch (e) { pass = false; out[label] = `THREW:${e.code || e.message}`; continue; }
+      const hit = (rec?.schema_unvalidated || []).find((i) => i.path === at && i.code === 'schema_unsupported');
+      if (!hit) pass = false;
+      out[label] = hit ? `recorded:${hit.keyword}@${hit.path}` : 'MISSING';
     }
-    const pass = Object.values(out).every((v) => v !== 'ACCEPTED');
     record('probe_schema_whitelist', pass,
       Object.entries(out).map(([k, v]) => `${k}=${v}`).join(' '));
     return pass;
@@ -224,6 +228,6 @@ for (const fn of [probeSamePidTwoCores, probeSettlementWindow, probeAppendAckLos
   }
 }
 const passed = all.filter(Boolean).length;
-console.log(`\n五条反例：${passed}/${all.length} 已被正确拒绝`);
+console.log(`\n五条反例：${passed}/${all.length} 判据成立（schema 那条的判据是「记账」不是「拒绝」）`);
 if (passed !== all.length) exitCode = 1;
 process.exit(exitCode);

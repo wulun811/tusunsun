@@ -68,23 +68,25 @@ export async function setup(runner) {
   // 散在 record 字面量里，外加 `_assertSchemaSupported` 读的是**未锁的原对象** ——
   // 那正是 RC31-C1 的形状（审 A、存 B）。现在要求三件事同时成立：
   //   ① 三个声明各有一个 `const lockedX = this._lockDecl(...)`（不是裸引用）；
-  //   ② `_assertSchemaSupported` 读的是 locked 变量（判据与提交同一对象）；
+  //   ② schema 体检读的是 locked 变量（判据与提交同一对象）；
   //   ③ record 里不再出现 `_lockDecl(`（派生属性不得成为第二个冻结口）。
   const pre = CORE_SRC.match(/const lockedInput = this\._lockDecl\(input_schema[\s\S]{0,400}?const lockedPerms = this\._lockDecl\(permissions/);
   assert(pre, '三个声明必须在登记早期各取一次权威快照（lockedInput / lockedOutput / lockedPerms）');
 
-  const chk = CORE_SRC.match(/_assertSchemaSupported\(id,\s*([A-Za-z_$][\w$]*),\s*'input_schema'\)/);
-  assert(chk, '找不到 input_schema 的支持面校验');
-  assertEquals(chk[1], 'lockedInput',
-    `支持面校验必须读**已冻结的那份副本**，实际读 ${chk[1]}（读原对象 = 审一个、存另一个）`);
-  const chkOut = CORE_SRC.match(/_assertSchemaSupported\(id,\s*([A-Za-z_$][\w$]*),\s*'output_schema'\)/);
-  assert(chkOut && chkOut[1] === 'lockedOutput', 'output_schema 支持面校验同样必须读已冻结副本');
+  const chk = CORE_SRC.match(/_schemaIssues\(([A-Za-z_$][\w$]*),\s*'input_schema'\)/);
+  assert(chk, '找不到 input_schema 的支持面体检调用');
+  assertEquals(chk[1], 'finalInput',
+    `支持面体检必须读**已冻结/已继承的副本**，实际读 ${chk[1]}（读原对象 = 审一个、存另一个）`);
+  assert(CORE_SRC.includes("const finalInput = inherited(input_schema, 'input_schema', lockedInput);"),
+    'finalInput 必须由冻结副本 lockedInput 派生');
+  const chkOut = CORE_SRC.match(/_schemaIssues\(([A-Za-z_$][\w$]*),\s*'output_schema'\)/);
+  assert(chkOut && chkOut[1] === 'finalOutput', 'output_schema 支持面体检同样必须读已冻结副本');
 
   const record = CORE_SRC.slice(CORE_SRC.indexOf('const record = {'), CORE_SRC.indexOf('this._capabilities.set(id, record)'));
   assert(record.length > 0, '找不到 record 字面量');
   assert(!/_lockDecl\s*\(/.test(record),
     'record 字面量里不得再调 _lockDecl()：三个声明已在上面锁好，派生属性再锁一次就是第二个冻结口');
-  for (const [field, locked] of [['input_schema', 'lockedInput'], ['output_schema', 'lockedOutput'], ['permissions', 'lockedPerms']]) {
+  for (const [field, locked] of [['input_schema', 'finalInput'], ['output_schema', 'finalOutput'], ['permissions', 'lockedPerms']]) {
     const m = record.match(new RegExp(`${field}:\\s*([^\\n]+),\\n`));
     assert(m, `record 里找不到 ${field}`);
     assert(new RegExp(`_lockDecl|${locked}`).test(m[1]), `${field} 必须来自登记期权威快照，实际 ${m[1].trim()}`);

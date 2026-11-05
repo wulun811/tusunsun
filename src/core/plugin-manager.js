@@ -174,10 +174,8 @@ class PluginManager {
     }
   }
 
-  // 插件目录里的 `.js` 在老解释器下不被当作 ESM，报的是 `Unexpected token 'export'`；
-  // 这里把它换成具名错误，**建议文本由宿主注入**（`esmHint`）。内核不得反向 import
-  // `plugins/_lib/…`（那会让 `src/core/` 单独拷走后无法加载）；宿主不注入时不静默丢失
-  // 该诊断 —— 退化为抛出原始错误（它本身带 Node 的原话）。
+  // 插件目录里的 `.js` 在老解释器下不被当作 ESM（报 `Unexpected token 'export'`）：换成具名错误，
+  // 建议文本由宿主注入 `esmHint`（内核不得反向 import `plugins/_lib/…`）；宿主不注入时退化为原始错误。
   async _importPluginModule(fullPath) {
     try {
       return await import(pathToFileURL(fullPath).href + '?' + this._instanceTag);
@@ -221,7 +219,14 @@ class PluginManager {
       if ((await this._importAndRegister(fullPath)).ok) this.core.log('info', `Loaded plugin (eager): ${file}`);
     } catch (err) {
       this.core.log('error', `Failed to load ${file}: ${err.message}`);
+      this._recordLoadFailure(file, err);
     }
+  }
+
+  // 装载/索引失败必须落成**只读事实**：插件没进 `plugins` 表时，扫表得出的健康结论只会说一切正常。
+  // 写进 `core._startFailures`（与 init 失败同一本账），readiness 已经在读它。
+  _recordLoadFailure(file, err) {
+    this.core._startFailures.set(file, { error: err.message, requiredFailed: false, phase: 'load', at: Date.now() });
   }
 
   async _indexLazyPlugin(file, fullPath, source = 'boot') {
@@ -248,6 +253,7 @@ class PluginManager {
       this.core.log('info', `Registered lazy plugin: ${file}`);
     } catch (err) {
       this.core.log('error', `Failed to index ${file}: ${err.message}`);
+      this._recordLoadFailure(file, err);
     }
   }
 
@@ -301,6 +307,7 @@ class PluginManager {
         if ((await this._importAndRegister(fullPath)).ok) this.core.log('info', `Loaded plugin from: ${file}`);
       } catch (err) {
         this.core.log('error', `Failed to load ${file}: ${err.message}`);
+        this._recordLoadFailure(file, err);
       }
     }
   }

@@ -133,14 +133,24 @@ function lazyManifest(pname, meta) {
 export function validateAssembly(plugins, lazyIndex = null) {
   _state.violations = [];
   _state.degraded = [];
+  _state.serviceOnlyLazy = [];
   const manifests = _buildManifests(plugins);
 
-  // R0-112 缺陷 2：场景声明的全集是 **eager ∪ lazy**（同 R0-111 `scenePluginNames` 口径）。
-  // lazy 插件按需装载、其服务经 `_lazyHook` 可取，因此它们提供的服务**是可用 provider**；
-  // 只按 eager 校验会把「require 一个 lazy 服务」误判为缺失（实测默认场景 2 条假违例，
-  // 且 production 档据此拒绝启动）。同名时以已装载的 eager 声明为准。
+  // R0-112：场景声明的全集是 eager ∪ lazy；只按 eager 校验会把「require 一个 lazy 服务」误判为缺失。
+  // 同名时以已装载的 eager 声明为准。
   for (const [pname, meta] of lazyIndex || []) {
     if (!manifests.has(pname)) manifests.set(pname, lazyManifest(pname, meta));
+  }
+
+  // lazy 只有能力名入口（`_resolveLazily`），`getService` 不触发 —— 只提供 service 的 lazy
+  // 插件永远装不上，而这里又把它算作可用 provider。判 degraded 并点名，别让它在准入上隐身。
+  for (const [pname, m] of manifests) {
+    if (!m.lazy) continue;
+    const all = (m.provides || []).filter(Boolean);
+    if (all.length && all.every((p) => p.type === 'service')) {
+      _state.degraded.push(pname);
+      _state.serviceOnlyLazy.push(pname);
+    }
   }
 
   // 1. 同名 service provider
@@ -205,7 +215,7 @@ export function validateAssembly(plugins, lazyIndex = null) {
   };
   for (const node of edges.keys()) walk(node, []);
 
-  return { violations: _state.violations, degraded: _state.degraded, manifests };
+  return { violations: _state.violations, degraded: _state.degraded, serviceOnlyLazy: _state.serviceOnlyLazy, manifests };
 }
 
 async function init(core) {
@@ -215,8 +225,11 @@ async function init(core) {
   // R0-112 缺陷 2：校验对象是场景声明的全集（eager ∪ lazy），不是只有已装载的 eager。
   const lazyIndex = core.getData('_lazyIndex');
   const lazyMeta = typeof lazyIndex === 'function' ? lazyIndex() : lazyIndex;
-  const { violations, degraded, manifests } = validateAssembly(core.plugins, lazyMeta);
+  const { violations, degraded, serviceOnlyLazy, manifests } = validateAssembly(core.plugins, lazyMeta);
   _state.manifests = manifests;
+  for (const n of serviceOnlyLazy) {
+    core.log('warn', `[admission-gate] lazy 插件 "${n}" 只提供 service、没有能力：getService 不触发懒加载，运行期取不到 —— 请放进 eager（已判 degraded）`);
+  }
 
   const legacyCount = [...manifests.values()].filter((m) => m.legacy).length;
   const lazyCount = [...manifests.values()].filter((m) => m.lazy).length;

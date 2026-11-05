@@ -2,7 +2,7 @@
 
 > 这份文档讲**整个随包系统**：内核、**全部随包插件**、场景配方，以及它们之间的接口。
 >
-> 和另外几份的分工：`microkernel.md` 只拆内核那 4889 行怎么构成；
+> 和另外几份的分工：`microkernel.md` 只拆内核那 4896 行怎么构成；
 > `function-ownership.md` 只回答"某个可变事实谁有写入权"；
 > `kernel-boundary.md` 回答"什么该进内核、什么不该"。
 > **本文回答"谁在哪一层、靠什么连起来、一次调用会经过谁"。**
@@ -19,7 +19,7 @@
                      │
 装配            scenes/*.json5（include + eager + lazy + plugins + optional）
                      │  依赖拓扑、生命周期、世代
-内核            src/core/  8 文件 · 4889 行 · 0 个 npm 运行时依赖
+内核            src/core/  8 文件 · 4896 行 · 0 个 npm 运行时依赖
                      │  能力派发（Attempt / Waiter）· 事件 · 服务
 插件            plugins/  40 个根插件 + 10 个工具插件 + 22 个库文件
                      │
@@ -36,8 +36,8 @@
 | 层 | 位置 | 规模 | 变化频率 |
 |---|---|---|---|
 | 入口 | `tusunsun.mjs`（73 行）、`scripts/cli.mjs`（820 行） | 893 行 | 中 |
-| 内核 | `src/core/*.js` | **8 文件 / 4889 行** | **极低**（有行数预算，见 ADR-10） |
-| 插件 | `plugins/*.js` | **40 文件 / 19474 行** | 高 |
+| 内核 | `src/core/*.js` | **8 文件 / 4896 行** | **极低**（有行数预算，见 ADR-10） |
+| 插件 | `plugins/*.js` | **40 文件 / 19489 行** | 高 |
 | 工具插件 | `plugins/tools/*.js` | **10 文件 / 1281 行** | 高 |
 | 插件库 | `plugins/_lib/**` | **22 文件 / 4767 行** | 中 |
 | 场景配方 | `scenes/*.json5` | 10 个 | 高 |
@@ -46,13 +46,13 @@
 
 复核（**两个口径分清楚**）：
 
-- 内核行数用**官方口径** `node scripts/core-manifest.js`（`split('\n')` 计数，末尾换行算一行）→ 合计 **4889**。
+- 内核行数用**官方口径** `node scripts/core-manifest.js`（`split('\n')` 计数，末尾换行算一行）→ 合计 **4896**。
   用 `wc -l` 会得到 4881（每个文件少 1），两者差 8 = 文件数，**不是谁错了**。
 - 插件行数用 `wc -l`。
 
 ```bash
-node scripts/line-check.js | tail -6            # 内核：src/core 总行 4889/4889
-ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19474
+node scripts/line-check.js | tail -6            # 内核：src/core 总行 4896/4896
+ls plugins/*.js | wc -l; wc -l plugins/*.js | tail -1     # 40 / 19489
 ls plugins/tools/*.js | wc -l; wc -l plugins/tools/*.js | tail -1
 ```
 
@@ -437,7 +437,7 @@ Cell 身份 + CellSpec（能力交集） + Task
 
 | 你想知道 | 读哪份 |
 |---|---|
-| 内核那 4889 行怎么分 | `docs/architecture/microkernel.md` |
+| 内核那 4896 行怎么分 | `docs/architecture/microkernel.md` |
 | 什么该进内核 | `docs/architecture/kernel-boundary.md` |
 | 某个事实谁写 | `docs/architecture/function-ownership.md` |
 | 三台状态机与跨机器读 | `docs/architecture/core-transition-contracts.md` |

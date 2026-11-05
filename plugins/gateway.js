@@ -943,7 +943,9 @@ class GatewayPlugin {
         }
         this.core.log('info', 'Stop command received from client');
         setTimeout(async () => {
-          try { await this.core.shutdown?.(); } catch { /* shutdown 尽力而为，进程终将退出 */ }
+          // 本内核没有 `shutdown` 方法：可选链只会让这行静默成空操作，紧接着 process.exit(0)
+          // ⇒ 所有插件 stop() 一次都不会被调用。走 core.stop()（CLI 信号路径用的是同一个）。
+          try { await this.core.stop?.(); } catch (e) { this.core.log('error', `[gateway] stop failed: ${e.message}`); }
           process.exit(0);
         }, 500);
         return;
