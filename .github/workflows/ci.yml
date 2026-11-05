@@ -48,8 +48,7 @@ jobs:
               grep -aE "FAIL|✗|Error|Summary|Total:|Failed:" test-output.log | tail -80 | sed 's/\x1b\[[0-9;]*m//g'
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            sed 's/\x1b\[[0-9;]*m//g' test-output.log \
-              | grep -aA 3 -E "^ +FAIL |^=== Summary ===|^  Total: |^  Failed: |^  SKIP " | tail -80 \
+            sed 's/\x1b\[[0-9;]*m//g' test-output.log | tail -120 \
               | while IFS= read -r line; do echo "::error::${line:0:900}"; done
           fi
           exit $rc
@@ -88,8 +87,7 @@ jobs:
               grep -aE "FAIL|✗|Error|Summary|Total:|Failed:" test-output.log | tail -80 | sed 's/\x1b\[[0-9;]*m//g'
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            sed 's/\x1b\[[0-9;]*m//g' test-output.log \
-              | grep -aA 3 -E "^ +FAIL |^=== Summary ===|^  Total: |^  Failed: |^  SKIP " | tail -80 \
+            sed 's/\x1b\[[0-9;]*m//g' test-output.log | tail -120 \
               | while IFS= read -r line; do echo "::error::${line:0:900}"; done
           fi
           exit $rc
