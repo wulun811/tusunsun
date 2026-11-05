@@ -53,7 +53,9 @@ class TokenBucket {
 
 class GatewayPlugin {
   name = 'gateway';
-  version = '0.4.0';
+  // 0.5.0（R0-180）：新增 `POST /api/session/cancel` 与 `GET /api/session/stats`；
+  // OpenAI 兼容面接受 `budget` / `stateless` / `capabilities` / `permission_mode` 扩展字段。
+  version = '0.5.0';
   permissions = ['net.listen'];
   // `registerService('gateway', this)` 与这里声明的服务名必须一致：
   // chat-ui 的 `requires = { gateway }` 在准入闸门里靠它找 provider。
@@ -96,6 +98,11 @@ class GatewayPlugin {
     this.addHandler('GET', '/api/context', (req, res) => this._handleContextGet(req, res));
     this.addHandler('POST', '/api/context/compact', (req, res) => this._handleContextCompact(req, res));
     this.addHandler('GET', '/api/audit', (req, res) => this._handleAuditGet(req, res));
+    // 轻任务控制面（R0-180）：按会话取消 + 按会话观测。
+    // 注意路径：`/api/sessions` 已经被"会话↔工作目录绑定"占用（workspace.list），
+    // 新面必须换名字 —— 复用同一个路径会让现有客户端的读法在一夜之间改变含义。
+    this.addHandler('POST', '/api/session/cancel', (req, res) => this._handleSessionCancel(req, res));
+    this.addHandler('GET', '/api/session/stats', (req, res) => this._handleSessionStats(req, res));
   }
 
   /**
@@ -187,6 +194,104 @@ class GatewayPlugin {
       return;
     }
     this._sendJson(res, 200, ws.list());
+  }
+
+  /**
+   * 400 类（调用方输入不合法）与 5xx 类（网关/模型/超时）的分界。
+   *
+   * 只认**具名 code**，不靠错误文案前缀：文案会变，code 是合同。少列一个 code 的代价是
+   * “请求写错了”被报成 502/504 —— 客户端会去重试一个永远不会成功的请求。
+   */
+  _isContractCode(code) {
+    return code === 'invalid_session_id' || code === 'out_of_bounds'
+      || code === 'invalid_budget' || code === 'budget_unsupported'
+      || code === 'invalid_session_policy' || code === 'unsupported_permission_mode'
+      || code === 'session_policy_unavailable';
+  }
+
+  /**
+   * `POST /api/session/cancel` {session_id, reason} → 停止某一个会话的当前轮次。
+   *
+   * **202 表示“请求已登记”，不表示“已经停了”** —— 200 会被读成后者。终态（`cancelled` /
+   * `unknown`）只出现在那条 `chat.handle` 的返回值里，这里不回收、不伪造。
+   */
+  async _handleSessionCancel(req, res) {
+    const svc = this.core.getService?.('chat-control');
+    if (!svc || typeof svc.cancel !== 'function') {
+      this._sendJson(res, 501, {
+        error: 'chat-control is not present in this assembly (haotian-lite is not the chat provider); '
+          + 'per-session cancel is unavailable',
+        code: 'session_control_unsupported',
+      });
+      return;
+    }
+    let body;
+    try { body = JSON.parse((await this._collectBody(req, res)) || '{}'); }
+    catch { this._sendError(res, 400, 'invalid JSON body', 'invalid_json'); return; }
+    const raw = body?.session_id ?? body?.sessionId;
+    if (!raw) { this._sendJson(res, 400, { error: 'body "session_id" is required', code: 'session_required' }); return; }
+    let id;
+    try { id = assertSessionId(raw); }
+    catch (err) { this._sendError(res, 400, err.message, err.code || 'invalid_session_id'); return; }
+    try {
+      const out = svc.cancel(id, { reason: body?.reason });
+      this._sendJson(res, out?.accepted ? 202 : 200, out);
+    } catch (err) {
+      this._sendJson(res, 500, { error: err.message, code: err.code || 'cancel_failed' });
+    }
+  }
+
+  /**
+   * `GET /api/session/stats[?session_id=<id>]` → 进程内每会话的排队/在跑/轮次/token/最后错误。
+   *
+   * 边界与 `/api/audit` 相同：这是**进程内**读数（`stats_scope:"process-local"`），不是跨进程
+   * 聚合，也不含 prompt/回复正文。会话不给就返回全部；给了但本进程没见过 → 404，
+   * 不拿一个全 0 的行冒充“它没在跑”。
+   */
+  _handleSessionStats(req, res) {
+    const svc = this.core.getService?.('chat-control');
+    if (!svc || typeof svc.snapshot !== 'function') {
+      this._sendJson(res, 501, {
+        error: 'chat-control is not present in this assembly (haotian-lite is not the chat provider)',
+        code: 'session_control_unsupported',
+      });
+      return;
+    }
+    const q = new URL(req.url, 'http://localhost').searchParams;
+    const raw = q.get('session_id') || q.get('session');
+    if (raw) {
+      let id;
+      try { id = assertSessionId(raw); }
+      catch (err) { this._sendError(res, 400, err.message, err.code || 'invalid_session_id'); return; }
+      const row = svc.stat(id);
+      if (!row) {
+        this._sendJson(res, 404, { error: `unknown session "${id}": no turn in this process`, code: 'unknown_session' });
+        return;
+      }
+      this._sendJson(res, 200, row);
+      return;
+    }
+    this._sendJson(res, 200, svc.snapshot());
+  }
+
+  /**
+   * OpenAI 兼容面上的**扩展字段**（R0-180）：`budget` / `stateless` /
+   * `capabilities` / `permission_mode`。
+   *
+   * 未给就不传 —— 不传与传 `null` 在 `chat.handle` 里是两件事（后者会被当成“给了个空预算”）。
+   */
+  _budgetFloorMs(data) {
+    const wall = Number(data?.budget?.wall_ms);
+    return Number.isFinite(wall) && wall > 0 ? wall + 30000 : 0;
+  }
+
+  _sessionParams(data) {
+    const out = {};
+    if (data?.budget !== undefined) out.budget = data.budget;
+    if (data?.stateless !== undefined) out.stateless = data.stateless === true;
+    if (data?.capabilities !== undefined) out.capabilities = data.capabilities;
+    if (data?.permission_mode !== undefined) out.permission_mode = data.permission_mode;
+    return out;
   }
 
   /**
@@ -741,12 +846,17 @@ class GatewayPlugin {
 
   // `core.command()` 默认 30s，多步 agent 循环 + 推理模型单轮常超时；对话超时须按会话级预算给足，
   // 且可由配置覆盖——否则会出现"报超时但工具副作用还在继续跑"。
-  _chatTimeoutMs() {
+  _chatTimeoutMs(floorMs = 0) {
     const cfg = this.core.get('gateway.chatTimeoutMs');
-    if (Number.isFinite(cfg) && cfg > 0) return cfg;
-    const env = Number(readEnv('CHAT_TIMEOUT_MS'));
-    if (Number.isFinite(env) && env > 0) return env;
-    return 600000; // 10 分钟：足够多步工具循环，又不至于挂死
+    let base = 600000; // 10 分钟：足够多步工具循环，又不至于挂死
+    if (Number.isFinite(cfg) && cfg > 0) base = cfg;
+    else {
+      const env = Number(readEnv('CHAT_TIMEOUT_MS'));
+      if (Number.isFinite(env) && env > 0) base = env;
+    }
+    // `budget.wall_ms` 必须**先于**传输层超时到达：否则调用方拿到的是 `timeout_no_abort`
+    // （命令超时、底层还在跑），而不是 `budget_exhausted` —— 两件完全不同的事。
+    return Math.max(base, Number.isFinite(floorMs) ? floorMs : 0);
   }
 
   async _handleRequest(connId, msg) {
@@ -1061,6 +1171,7 @@ class GatewayPlugin {
     try {
       const cmdResult = await this.core.command('chat.handle', {
         message: lastMsg.content, sessionId, stream: true,
+        ...this._sessionParams(data),
         onChunk: (chunk) => {
           const delta = {}
           if (typeof chunk === 'string') delta.content = chunk
@@ -1068,14 +1179,14 @@ class GatewayPlugin {
           else if (chunk?.content) delta.content = chunk.content
           res.write(`data: ${JSON.stringify({ choices: [{ delta, index: 0 }] })}\n\n`)
         },
-      }, this._chatTimeoutMs())
+      }, this._chatTimeoutMs(this._budgetFloorMs(data)))
       // 流式路径同样要把"模型层失败"标出来：正文可能已经流出去一部分，不能改状态码，
       // 但必须发一条机器可判的 error 事件。
       if (!cmdResult?.ok || cmdResult.payload?.error) {
         const msg = cmdResult?.payload?.reply || cmdResult?.error || 'chat command failed'
         // 流式已发出 200 头，改不了状态码；至少把**契约拒绝**与模型故障分开，
         // 客户端据 code 判定是自己输入错还是上游挂了。
-        const contract = cmdResult?.code === 'invalid_session_id' || cmdResult?.code === 'out_of_bounds'
+        const contract = this._isContractCode(cmdResult?.code)
         this._emitError(req, contract ? 400 : 502, msg)
         res.write(`data: ${JSON.stringify({ error: { message: msg, type: contract ? 'invalid_request_error' : 'api_error', param: null, code: cmdResult?.code || 'model_error' } })}\n\n`)
       } else if (cmdResult?.payload?.usage || cmdResult?.payload?.tokenUsage) {
@@ -1102,12 +1213,13 @@ class GatewayPlugin {
     try {
       const result = await this.core.command('chat.handle', {
         message: lastMsg.content, sessionId,
-      }, this._chatTimeoutMs())
+        ...this._sessionParams(data),
+      }, this._chatTimeoutMs(this._budgetFloorMs(data)))
       // 失败不许伪装成成功：命令超时 / 模型报错必须按语义分派状态码，不能落到下面的 200 分支。
       if (!result?.ok) {
         const msg = result?.error || 'chat command failed'
         // **调用方输入非法**不是网关故障，更不是超时：400 与 504 在监控上完全不同。
-        if (result?.code === 'invalid_session_id' || result?.code === 'out_of_bounds') {
+        if (this._isContractCode(result?.code)) {
           this._sendError(res, 400, msg, result.code)
           this._emitError(req, 400, msg)
           return
@@ -1128,6 +1240,9 @@ class GatewayPlugin {
         choices: [{ index: 0, message: { role: 'assistant', content: result.payload?.reply || '' }, finish_reason: 'stop' }],
         // `usage` 是 OpenAI 的 token 形状；上下文预算另立 `tusunsun_context`，上游没报用量就**不出** usage 字段。
         ...(result.payload?.usage ? { usage: result.payload.usage } : {}),
+        // 终态（取消 / 预算耗尽）走 200 + 具名字段：它**不是**模型错误，也不是 HTTP 错误。
+        // `finish_reason` 保持 `stop`，以免只认 OpenAI 枚举的客户端把一条正常响应判成异常。
+        ...(result.payload?.state ? { tusunsun_state: result.payload.state, tusunsun_code: result.payload.code } : {}),
         ...(result.payload?.tokenUsage ? { tusunsun_context: result.payload.tokenUsage } : {}),
         // 把**实际生效**的工作目录回给调用方：真值来自 workspace 服务，不是把请求里的字符串原样回显。
         ...(() => {

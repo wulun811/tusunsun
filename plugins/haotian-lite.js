@@ -3,6 +3,7 @@ import { matchDangerousCommand, classifyIrreversible } from './_lib/danger-patte
 import { wsRequest, C, c, CHAT_TIMEOUT_MS } from '../scripts/cli-transport.mjs';
 import { randomUUID } from 'node:crypto';
 import { createSessionQueue } from './tools/lib/session-queue.mjs';
+import { assertSessionId } from './tools/lib/session-id.mjs';
 
 class ConcurrencyLimiter {
   constructor(max) {
@@ -39,7 +40,10 @@ class ConcurrencyLimiter {
 
 class HaotianLite {
   name = 'haotian-lite';
-  version = '0.8.0';
+  // 0.9.0（R0-180）：新增按会话的取消/预算/能力策略/无历史/观测面（`chat-control`
+  // 服务 + `agent.cancel` / `agent.sessions` 能力）。`chat.handle` 的入参与返回**向后兼容**：
+  // 不传新字段时行为与 0.8.x 逐字段一致。
+  version = '0.9.0';
   requires = { 'session': '>=0.3.0' };
   permissions = [];
   provides = [{ name: 'chat.handle', type: 'capability' }];
@@ -48,6 +52,15 @@ class HaotianLite {
     this._rejectNew = false;
     this._rejectReason = '';
     this._singleSessionMode = false;
+    // 会话控制面（R0-180）：
+    //   `_live`      正在跑的那一轮（sessionId → 控制记录，cancel/预算/观测都读它）
+    //   `_recent`    最近结束的若干轮（有界；观测面要能回答"上一次为什么失败"）
+    //   `_queued`    已提交、还没开始跑的轮数（同一会话按队列串行）
+    //   `_preCancel` 对"还没开始"的那一轮下的停止请求（开始时要先看它）
+    this._live = new Map();
+    this._recent = new Map();
+    this._queued = new Map();
+    this._preCancel = new Map();
   }
 
   async init(core) {
@@ -67,6 +80,26 @@ class HaotianLite {
         description: 'Handle a chat message through the orchestration pipeline',
         handler: (params) => this.handle(params),
         owner: 'haotian-lite',
+      });
+      // 会话控制面**与 chat.handle 同生共死**：chat.handle 被别人持有时，本插件不跑任何
+      // 执行循环，此时注册 `agent.cancel` 只会对着别人的轮次回 not_running —— 那是一条
+      // 读起来像"没有任务"的谎。缺这个服务时网关回 501，而不是回一个空的 accepted。
+      core.registerService('chat-control', {
+        cancel: (sessionId, opts) => this.cancel(sessionId, opts),
+        snapshot: () => this.snapshot(),
+        stat: (sessionId) => this.stat(sessionId),
+      });
+      core.registerCapability('agent.cancel', {
+        description: 'Request cancellation of one in-flight chat turn (per session). '
+          + 'accepted:true means the request was recorded, NOT that the turn has stopped.',
+        owner: 'haotian-lite',
+        handler: (params) => this.cancel(params?.sessionId ?? params?.session_id, { reason: params?.reason }),
+      });
+      core.registerCapability('agent.sessions', {
+        description: 'Read-only per-session execution stats: queue depth, in-flight, turns, tokens, last error. '
+          + 'Never includes prompt or reply text.',
+        owner: 'haotian-lite',
+        handler: () => this.snapshot(),
       });
     }
 
@@ -103,10 +136,19 @@ class HaotianLite {
       err.code = 'plugin_not_initialised';
       throw err;
     }
-    return this._sessionQueue.run(sessionId, () => this._handleTurn(params));
+    // 排队深度只数"已提交、还没开始"这一段：`_handleTurn` 进来时不再减计数，
+    // 读数时用 `queued - (在跑?1:0)` 算净排队，取消/完成都由 finally 归还。
+    this._noteQueued(sessionId, +1);
+    try {
+      return await this._sessionQueue.run(sessionId, () => this._handleTurn(params));
+    } finally {
+      this._noteQueued(sessionId, -1);
+    }
   }
 
-  async _handleTurn({ message, sessionId = 'default', stream = false, onChunk }) {
+  async _handleTurn(params) {
+    const { message, sessionId = 'default', stream = false, onChunk } = params || {};
+    const stateless = params?.stateless === true;
     const traceId = this._genTraceId();
     const chainId = sessionId || 'default';
     this.core.emitFast('request.start', {
@@ -119,36 +161,81 @@ class HaotianLite {
       return { reply: `Service degraded: ${this._rejectReason}`, sessionId, traceId };
     }
 
+    // **预算先判**：跑到一半再报"预算字段写错了"，调用方拿到的是一段真实回答加一个错误码，
+    // 它没法判断这轮到底算不算数。契约错误带 code + contractError 原样上抛（网关据 code 回 400）。
+    const budget = this._normalizeBudget(params?.budget);
+
+    // 标识契约：就算 `stateless`（不读不写历史）也照判 —— 它是 cancel / stats 的键，不是自由文本。
+    // 判在模型请求之前：非法 id 不会产生任何模型调用，也不会落盘。
+    assertSessionId(chainId);
+
     const release = await this._concurrencyLimiter.acquire(30000).catch(() => null);
     if (!release) {
       return { reply: 'System busy, please retry', sessionId, traceId };
     }
 
+    const ctl = this._beginTurn(chainId, { budget, stateless, traceId });
+    let history = [];
+    let tools = [];
+    let histBase = 0;
+    let usageAccum = null;
+    let policyBound = false;
     try {
       const inbound = await this.core.runPipeline('inbound', { message, sessionId }, { traceId });
-      if (!inbound) return this._end('Request blocked', sessionId, traceId, []);
+      if (!inbound) return this._end('Request blocked', sessionId, traceId, [], [], false, null, { stateless });
 
       const session = this.core.getService('session');
-      // R0-114（P0-01）：契约拒绝必须**原样上抛**（code/contractError），不能被下面的
-      // `catch (err)` 收成 `{reply:'Error: …'}` 的 200 —— 那会把 400 变成"模型答了句错话"。
-      let history = await session?.loadSession?.(sessionId) || [];
+      // `stateless`：**不读**历史。判据是"这次没有历史"，不是"历史里恰好没内容"——
+      // 同一个 id 之前跑过普通对话时，后者会把旧内容悄悄带回来（"一次性"就不成立了）。
+      history = (stateless || typeof session?.loadSession !== 'function')
+        ? [] : (await session.loadSession(chainId)) || [];
       if (history.length > 200) history = history.slice(-200);
+      histBase = history.length;
       history.push({ role: 'user', content: inbound.message || message });
 
-      const yingMini = this.core.getService('ying-mini');
-      if (yingMini) {
-        yingMini.recordEvent(sessionId, 'user_input', 'user', { message: (inbound.message || message).slice(0, 1000) }).catch(err => { this.core?.log?.('warn', `[haotian-lite] yingMini recordEvent(user_input) failed: ${err.message}`) });
+      // `stateless` 的判据是"不写"：落过盘就已经"保留历史"了，再删是另一回事。
+      if (!stateless) {
+        const yingMini = this.core.getService('ying-mini');
+        if (yingMini) {
+          yingMini.recordEvent(chainId, 'user_input', 'user', { message: (inbound.message || message).slice(0, 1000) }).catch(err => { this.core?.log?.('warn', `[haotian-lite] yingMini recordEvent(user_input) failed: ${err.message}`) });
+        }
       }
 
-      const tools = this._cognitionVisibleTools(this.core.getService('tool-registry')?.list() || [], sessionId);
-      const maxTurns = this.core.get('agent.maxTurns') || 10;
+      // 会话策略（R0-180 / P1）：只能**收窄**。判据在执行器的派发期，不是提示词里的可见性。
+      policyBound = await this._bindSessionPolicy(chainId, params, traceId);
+
+      let visibleTools = this._cognitionVisibleTools(this.core.getService('tool-registry')?.list() || [], chainId);
+      if (policyBound) visibleTools = await this._policyVisibleTools(chainId, visibleTools);
+      tools = visibleTools;
+
+      // 预算的**生效值**：进程级上限仍是上限，预算只能比它更小（与能力交集同一方向）。
+      const procMax = this.core.get('agent.maxTurns') || 10;
+      const maxTurns = budget.max_turns == null ? procMax : Math.min(procMax, budget.max_turns);
+      const turnsBoundByBudget = budget.max_turns != null && maxTurns === budget.max_turns;
+      const deadline = budget.wall_ms == null ? null : ctl.startedAt + budget.wall_ms;
 
       const systemMsg = await this._buildSystemMsg(tools, sessionId, traceId, inbound.message || message);
 
       let turn = 0;
-      let usageAccum = null;   // R0-111/W5：本轮累计的真实 token 用量（上游没报就保持 null）
-      while (turn < maxTurns) {
+      for (;;) {
+        // 终止判据一律排在**下一步开始之前**：排在后面就是"先干了活，再宣布不该干"。
+        if (turn >= maxTurns) {
+          if (turnsBoundByBudget) {
+            return this._finishBudget('max_turns', ctl, {
+              sessionId, traceId, history, tools,
+              limit: budget.max_turns, used: turn,
+            });
+          }
+          // 进程级上限命中：保持旧行为与旧文案（不把它伪装成"预算耗尽"）。
+          const fallback = 'Max turns reached.';
+          history.push({ role: 'assistant', content: fallback });
+          return this._end(fallback, sessionId, traceId, history, tools, false, usageAccum, { stateless });
+        }
+        const stopBefore = this._stopReason(ctl, budget, deadline);
+        if (stopBefore) return this._terminate(stopBefore, ctl, { sessionId, traceId, history, tools, histBase });
+
         turn++;
+        ctl.turn = turn;
         this.core.emitFast('agent.step', {
           sessionId, turn, maxTurns, traceId,
           timestamp: Date.now(),
@@ -172,66 +259,75 @@ class HaotianLite {
         });
 
         if (stream) {
-          const result = await this._streamLoop(messages, tools, sessionId, session, history, traceId, onChunk);
+          const result = await this._streamLoop(messages, tools, sessionId, session, history, traceId, onChunk, ctl);
+          if (result.canceled) {
+            return this._terminate({ kind: 'cancel', reason: 'canceled while streaming' }, ctl,
+              { sessionId, traceId, history, tools, histBase });
+          }
           usageAccum = this._mergeUsage(usageAccum, result.usage);
-          if (result.error) return this._end(result.content || '[API Error] unknown', sessionId, traceId, history, tools, true);
+          ctl.tokens = usageAccum?.total_tokens || 0;
+          // 模型调用**返回之后**再判一次：cancel 与 wall_ms 都可能在这段时间里到达。
+          const stopAfter = this._stopReason(ctl, budget, deadline);
+          if (stopAfter) return this._terminate(stopAfter, ctl, { sessionId, traceId, history, tools, histBase });
+          if (result.error) return this._end(result.content || '[API Error] unknown', sessionId, traceId, history, tools, true, null, { stateless });
           if (result.content && !result.tool_calls?.length) {
             history.push({ role: 'assistant', content: result.content || '' });
             await this.core.runPipeline('outbound', { reply: result.content, sessionId }, { traceId });
-            return this._end(result.content, sessionId, traceId, history, tools, false, usageAccum);
+            return this._end(result.content, sessionId, traceId, history, tools, false, usageAccum, { stateless });
           }
-      if (result.tool_calls) {
-          for (const tc of result.tool_calls) {
-            history.push({ role: 'assistant', content: result.content || '', tool_calls: [tc] });
+          if (result.tool_calls) {
+            for (const tc of result.tool_calls) {
+              history.push({ role: 'assistant', content: result.content || '', tool_calls: [tc] });
+            }
+            const aborted = await this._execTools(result.tool_calls, history, turn, chainId, traceId, ctl);
+            if (aborted) return this._terminate(aborted, ctl, { sessionId, traceId, history, tools, histBase });
+            continue;
           }
-          await this._execTools(result.tool_calls, history, turn, chainId, traceId);
-          continue;
-        }
-          return this._end(result.content || '', sessionId, traceId, history, tools, false, usageAccum);
+          return this._end(result.content || '', sessionId, traceId, history, tools, false, usageAccum, { stateless });
         }
 
         const model = this.core.getService('model');
         if (!model) {
           history.push({ role: 'assistant', content: 'No model service configured' });
-          session?.saveHistory?.(sessionId, history);
-          return this._end('No model service configured', sessionId, traceId, history, tools);
+          // 落盘统一由 `_end` 做（它同时尊重 stateless）：这里再存一次是同一段消息进两次队列，
+          // 而这一路没有 `.catch`，目录不可写时就是一个未处理的 Promise 拒绝。
+          return this._end('No model service configured', sessionId, traceId, history, tools, false, null, { stateless });
         }
 
         const result = await model.callTier('worker', messages, tools);
         usageAccum = this._mergeUsage(usageAccum, result.usage);
+        ctl.tokens = usageAccum?.total_tokens || 0;
+        const stopAfter = this._stopReason(ctl, budget, deadline);
+        if (stopAfter) return this._terminate(stopAfter, ctl, { sessionId, traceId, history, tools, histBase });
 
         // R0-110/T2：模型层失败（超时/网络/上游 4xx-5xx）**不是"模型说的话"**，不得写进会话历史。
         // 此前 `[API Error] timeout 20s: no response` 被当 assistant 轮落盘（实测会话文件 live-2/live-3
         // 各躺着一条），下一轮它就成了"上文"被喂回模型——错误一旦入历史，后续每轮都在读它。
         // 现在：错误如实返回给调用方并带 `error:true`，但不进 history、不触发 outbound 管线。
         if (result.error) {
-          return this._end(result.content || '[API Error] unknown', sessionId, traceId, history, tools, true);
+          ctl.lastError = String(result.content || 'model error').slice(0, 300);
+          return this._end(result.content || '[API Error] unknown', sessionId, traceId, history, tools, true, null, { stateless });
         }
 
         if (result.content && !result.tool_calls?.length) {
           history.push({ role: 'assistant', content: result.content || '' });
-          session?.saveHistory?.(sessionId, history);
           await this.core.runPipeline('outbound', { reply: result.content, sessionId }, { traceId });
-          return this._end(result.content, sessionId, traceId, history, tools, false, usageAccum);
+          return this._end(result.content, sessionId, traceId, history, tools, false, usageAccum, { stateless });
         }
 
-          if (result.tool_calls) {
+        if (result.tool_calls) {
           history.push({ role: 'assistant', content: result.content || '', tool_calls: result.tool_calls });
-          await this._execTools(result.tool_calls, history, turn, chainId, traceId);
+          const aborted = await this._execTools(result.tool_calls, history, turn, chainId, traceId, ctl);
+          if (aborted) return this._terminate(aborted, ctl, { sessionId, traceId, history, tools, histBase });
           continue;
-          }
+        }
 
         history.push({ role: 'assistant', content: result.content || '' });
-        session?.saveHistory?.(sessionId, history);
-        return this._end(result.content || '', sessionId, traceId, history, tools, false, usageAccum);
+        return this._end(result.content || '', sessionId, traceId, history, tools, false, usageAccum, { stateless });
       }
-
-      const fallback = 'Max turns reached.';
-      history.push({ role: 'assistant', content: fallback });
-      session?.saveHistory?.(sessionId, history);
-      return this._end(fallback, sessionId, traceId, history, tools, false, usageAccum);
-
     } catch (err) {
+      ctl.lastError = String(err?.message || err).slice(0, 300);
+      ctl.finalState = 'failed';
       this.core.emit('error', {
         sessionId, traceId,
         component: 'haotian-lite',
@@ -246,6 +342,8 @@ class HaotianLite {
       if (err.contractError) throw err;
       return { reply: `Error: ${err.message}`, sessionId, traceId };
     } finally {
+      if (policyBound) this._unbindSessionPolicy(chainId);
+      this._finishTurn(ctl);
       try { if (typeof release === 'function') release(); } catch (e) { this.core?.log('warn', `[haotian-lite] release failed: ${e.message}`) }
     }
   }
@@ -380,7 +478,7 @@ class HaotianLite {
     return messages;
   }
 
-  async _execTools(toolCalls, history, turn, chainId, traceId) {
+  async _execTools(toolCalls, history, turn, chainId, traceId, ctl = null) {
     const executor = this.core.getService('tool-executor');
     // Cell 归属只看**会话**（rc.29 / R28-B）：一条模型工具调用是不是来自 Cell，与"这台 core
     // 有没有执行器"是两件事。旧版把两者绑在一起 —— 没有执行器就直接走 legacy 直连，于是
@@ -408,6 +506,12 @@ class HaotianLite {
       this.core?.log?.('warn', `[haotian-lite] refused ${toolCalls.length} model tool call(s) from ${chainId}: ${why}`);
     };
     if (executor) {
+      // **撤销先于派发**：cancel 到达之后就不再开始新的执行。已经在跑的那一次不在这里 ——
+      // 它要么在 `executeBatch` 的 await 里，要么已经被计进 `toolsDispatched`（见下）。
+      // 不写 "cancelled" 工具结果：这一整轮会被回滚，写进去只会污染历史。
+      if (ctl?.canceled) {
+        return { kind: 'cancel', reason: 'canceled before tool dispatch', why: ctl.canceled.reason };
+      }
       // 生命周期先表态：关闭/撤销之后的会话，不管门还在不在，都不再派发工具。
       if (eligibility && eligibility.ok === false) { denyCellTools(eligibility.reason); return; }
       // 有执行器也不等于**这个 Cell 的门**在那儿，更不等于**这一次调用**属于当前任务。
@@ -423,11 +527,13 @@ class HaotianLite {
           + 'A model-issued tool call from a Cell must pass a gate that is verifiably in place.');
         return;
       }
+      // 计数在**派发之前**：这一批只要进了执行器就可能产生副作用，之后无论成败都只能算"不知道"。
+      if (ctl) ctl.toolsDispatched += toolCalls.length;
       const results = await executor.executeBatch(toolCalls, { chainId, sessionId: chainId, traceId });
       const yingMini = this.core.getService('ying-mini');
       const fence = this.core.getService('kunxiansuo.bundle');
       for (const tr of results) {
-        if (yingMini) {
+        if (yingMini && !ctl?.stateless) {
           yingMini.recordEvent(chainId, 'tool_call', 'agent', {
             tool: tr.tool,
             args: tr.args || {},
@@ -502,6 +608,7 @@ class HaotianLite {
     }
 
     const legacyTools = this.core.getService('tools');
+    if (ctl) ctl.toolsDispatched += toolCalls.length;   // 同上：派发即可能副作用
     for (const tc of toolCalls) {
       let toolResult;
       // 公开 `get(name)`：不摸服务的私有 Map；取不到就是"这个工具不存在"。
@@ -575,13 +682,14 @@ class HaotianLite {
     return { ok: true, capId };
   }
 
-  async _streamLoop(messages, tools, sessionId, session, history, traceId, onChunk) {
+  async _streamLoop(messages, tools, sessionId, session, history, traceId, onChunk, ctl = null) {
     const model = this.core.getService('model');
     if (!model?.streamChatTier) return { content: '' };
+    // 已经收到停止请求就不要再发一次模型请求：那一段 token 花得没有任何意义。
+    if (ctl?.canceled) return { content: '', canceled: true };
 
     // 思考开关是**配置事实**（`model.thinking`，例如 {"type":"disabled"}），不是每次调用的临时参数。
     // 缺省时**什么都不传**：请求体里不会多出 `thinking` 字段，未配置的部署逐字节不变。
-    // 不接这一层，模型层那条 `opts.thinking` 透传就是死代码 —— 配了也不生效。
     const thinking = this.core.get?.('model.thinking');
     const modelOpts = (thinking === undefined || thinking === null) ? undefined : { thinking };
 
@@ -589,7 +697,12 @@ class HaotianLite {
     let fullReasoning = '';
     let streamError = false;   // R0-110/T2：流里的错误块必须与正常内容区分，否则同样会入史
     let streamUsage = null;    // R0-111/W5：上游末块带的 usage（OpenAI 需 stream_options.include_usage）
+    let canceled = false;
     for await (const chunk of model.streamChatTier('worker', messages, tools, modelOpts)) {
+      // 流式路径的取消**不必等一次完整模型调用**：每个分块都是一个边界。`break` 会触发
+      // 异步迭代器的 return()，模型层的响应流随之关闭 —— 这也是本进程里唯一能做到
+      // "立即可见地停下"的位置（非流式调用没有 AbortSignal，只能等它返回）。
+      if (ctl?.canceled) { canceled = true; break; }
       if (chunk.error) streamError = true;
       if (chunk.usage) streamUsage = chunk.usage;
       if (chunk.reasoning) {
@@ -628,8 +741,14 @@ class HaotianLite {
         sourcePlugin: 'haotian-lite',
       });
     }
-    return { content: fullContent || '', ...(streamError ? { error: true } : {}), ...(streamUsage ? { usage: streamUsage } : {}) };
+    return {
+      content: fullContent || '',
+      ...(streamError ? { error: true } : {}),
+      ...(canceled ? { canceled: true } : {}),
+      ...(streamUsage ? { usage: streamUsage } : {}),
+    };
   }
+
 
   /**
    * 按**当前冻结的 ContextProfile**过滤认知工具，使"模型看得见"与"调用会成功"一致。
@@ -720,18 +839,22 @@ class HaotianLite {
     };
   }
 
-  _end(reply, sessionId, traceId, history, tools, isError = false, modelUsage = null) {
+  _end(reply, sessionId, traceId, history, tools, isError = false, modelUsage = null, extra = {}) {
+    const { stateless = false, record = true, ...fields } = extra || {};
     this.core.emitFast('request.end', {
       traceId, sessionId,
       timestamp: Date.now(),
       sourcePlugin: 'haotian-lite',
     });
     const session = this.core.getService('session');
-    if (session && history.length) {
+    // `stateless` 的判据是"不写"，不是"写了再删"：一旦落盘，"不保留历史"就已经不成立。
+    if (!stateless && session && history.length) {
       session.saveHistory(sessionId, history).catch(err => { this.core?.log?.('warn', `[haotian-lite] saveHistory failed: ${err.message}`) });
     }
     const yingMini = this.core.getService('ying-mini');
-    if (yingMini && reply) {
+    // `record:false`：被取消 / 预算耗尽的那一轮不往记忆库里写一条"agent 说过话"——
+    // 那条文本是内核的状态播报，不是模型的输出。
+    if (!stateless && record && yingMini && reply) {
       yingMini.recordEvent(sessionId, 'agent_output', 'agent', { reply: String(reply).slice(0, 1000) }).catch(err => { this.core?.log?.('warn', `[haotian-lite] yingMini recordEvent(agent_output) failed: ${err.message}`) });
     }
     const tokenUsage = this._getTokenUsage(history, tools);   // 上下文预算（{used,max,percent}），控制台用
@@ -740,7 +863,275 @@ class HaotianLite {
     const usage = modelUsage && (modelUsage.prompt_tokens || modelUsage.completion_tokens) ? modelUsage : undefined;
     // R0-110/T2：`error:true` 是给上层（网关 REST/WS）的**机器可判**信号——它据此返回 502
     // 而不是"HTTP 200 + 一段其实是错误文案的正文"。此前调用方只能靠字符串前缀猜。
-    return { reply, sessionId, traceId, tokenUsage, ...(usage ? { usage } : {}), ...(isError ? { error: true } : {}) };
+    // 终态字段（state/code/reason/budget/…）只出现在取消与预算耗尽这两种结果里：
+    // 正常返回的形状与 0.20.2 逐字段一致，旧客户端不需要改。
+    return { reply, sessionId, traceId, tokenUsage, ...(usage ? { usage } : {}), ...(isError ? { error: true } : {}), ...fields };
+  }
+
+  // ── 会话控制面（R0-180）────────────────────────────────────
+  /**
+   * 预算的**契约校验与归一化**。
+   *
+   * 三条要求：
+   *   ① 未知字段**具名拒绝**：静默忽略会让调用方以为"限上了"，实际没限（最坏的假安全感）；
+   *   ② `max_cost_units` **明说不支持**：本内核不随包发布价格表，"算不出来"的预算不可能被执行，
+   *      接受它等于把"没限"写成"限了"；
+   *   ③ 数值一律整数且落在有界区间：`0` / 负数 / 小数 / `Infinity` 都是"看起来限了但永远不触发"。
+   */
+  _normalizeBudget(raw) {
+    const bad = (message, code = 'invalid_budget') => Object.assign(new Error(message), { code, contractError: true });
+    if (raw === undefined || raw === null) return { max_turns: null, wall_ms: null, max_tokens: null };
+    if (typeof raw !== 'object' || Array.isArray(raw)) throw bad('budget must be an object');
+    const known = ['max_turns', 'wall_ms', 'max_tokens', 'max_cost_units'];
+    const unknown = Object.keys(raw).filter((k) => !known.includes(k));
+    if (unknown.length) throw bad(`budget.${unknown[0]} is not part of this contract (accepts ${known.join('|')})`);
+    if (raw.max_cost_units !== undefined && raw.max_cost_units !== null) {
+      throw bad('budget.max_cost_units is not supported: this kernel ships no price table, so a cost budget '
+        + 'could not be enforced. Use budget.max_tokens — the model client reports real token usage.',
+      'budget_unsupported');
+    }
+    const int = (v, name, max) => {
+      if (v === undefined || v === null) return null;
+      if (!Number.isInteger(v) || v < 1 || v > max) throw bad(`budget.${name} must be an integer in [1, ${max}]`);
+      return v;
+    };
+    return {
+      max_turns: int(raw.max_turns, 'max_turns', 10000),
+      wall_ms: int(raw.wall_ms, 'wall_ms', 24 * 3600 * 1000),
+      max_tokens: int(raw.max_tokens, 'max_tokens', 1e9),
+    };
+  }
+
+  /** 登记一轮的开始。已排队的停止请求在这里生效（开始之前就停，不可能有副作用）。 */
+  _beginTurn(sessionId, { budget, stateless, traceId }) {
+    const pre = this._preCancel.get(sessionId) || null;
+    if (pre) this._preCancel.delete(sessionId);
+    const ctl = {
+      sessionId, traceId, budget, stateless,
+      startedAt: Date.now(), turn: 0, tokens: 0, toolsDispatched: 0,
+      canceled: pre, lastError: null, finalState: null,
+    };
+    this._live.set(sessionId, ctl);
+    return ctl;
+  }
+
+  /** 结束一轮：从"在飞"表里摘下，保留一条有界的观测记录。 */
+  _finishTurn(ctl) {
+    if (!ctl) return;
+    if (this._live.get(ctl.sessionId) === ctl) this._live.delete(ctl.sessionId);
+    try { this._remember(ctl); } catch (err) { this.core?.log?.('debug', `[haotian-lite] session stats bookkeeping failed: ${err?.message || err}`); }
+  }
+
+  _remember(ctl) {
+    const row = this._row(ctl.sessionId, ctl);
+    row.state = ctl.finalState || 'completed';
+    // 已经结束的一轮既不在跑也不在排队。不写死这两个值，就会把“收尾那一瞬”的读数
+    // （`handle` 的 finally 还没归还排队计数）当成终态保存下来，观测面会永远显示 queue_depth:1。
+    row.in_flight = 0;
+    row.queue_depth = 0;
+    this._recent.set(ctl.sessionId, row);
+    // 有界：观测面不是日志。持续跑长任务时无界增长等于把"记状态"变成内存泄漏。
+    while (this._recent.size > 256) this._recent.delete(this._recent.keys().next().value);
+  }
+
+  /**
+   * 一行观测记录。**不含** prompt / 回复正文 / 工具入参 —— 这些字段在 `/api/audit`、
+   * `/api/context` 和自己的会话历史里，不该从"健康面"泄漏出去。
+   */
+  _row(sessionId, ctl) {
+    const live = this._live.get(sessionId) === ctl;
+    const queued = Math.max(0, (this._queued.get(sessionId) || 0) - (this._live.has(sessionId) ? 1 : 0));
+    return {
+      session_id: sessionId,
+      state: ctl.finalState || (ctl.canceled ? 'cancelling' : 'running'),
+      in_flight: live ? 1 : 0,
+      queue_depth: queued,
+      turns: ctl.turn || 0,
+      tokens: ctl.tokens || 0,
+      tools_dispatched: ctl.toolsDispatched || 0,
+      last_error: ctl.lastError || null,
+      started_at: ctl.startedAt,
+      stateless: ctl.stateless === true,
+      budget: ctl.budget ? { ...ctl.budget } : null,
+      cancel_requested_at: ctl.canceled?.at ?? null,
+    };
+  }
+
+  _noteQueued(sessionId, delta) {
+    const sid = String(sessionId ?? '');
+    const n = (this._queued.get(sid) || 0) + delta;
+    if (n <= 0) this._queued.delete(sid); else this._queued.set(sid, n);
+  }
+
+  /**
+   * 停止判据的**唯一**实现（cancel / wall_ms / max_tokens）。
+   * 返回 `null` = 继续。调用方在每一步开始之前、以及模型调用返回之后各问一次。
+   */
+  _stopReason(ctl, budget, deadline) {
+    if (ctl.canceled) return { kind: 'cancel', reason: ctl.canceled.reason || 'host_requested' };
+    if (deadline != null) {
+      const now = Date.now();
+      if (now > deadline) {
+        return { kind: 'wall_ms', limit: budget.wall_ms, used: now - ctl.startedAt, overrun_ms: now - deadline };
+      }
+    }
+    if (budget.max_tokens != null && ctl.tokens > budget.max_tokens) {
+      return { kind: 'max_tokens', limit: budget.max_tokens, used: ctl.tokens };
+    }
+    return null;
+  }
+
+  _terminate(stop, ctl, ctx) {
+    if (!stop) return null;
+    if (stop.kind === 'cancel') return this._finishCanceled(stop, ctl, ctx);
+    return this._finishBudget(stop.kind, ctl, { ...ctx, limit: stop.limit, used: stop.used, overrun_ms: stop.overrun_ms });
+  }
+
+  /**
+   * 取消的终态。**只有"没有派发过任何工具"才敢说 cancelled** —— 派发过就只剩 unknown：
+   * 副作用不可撤销（与 `core.confirm` / Cell 的 `execution_revoked` 同一口径）。
+   *
+   * 历史**整轮回滚**：取消的语义是"这一轮没发生"，不是"发生了但没记账"。工具层的副作用
+   * 不因回滚而消失，但它们是审计面的事实（执行器 audit log / tool.execute 事件），不是会话历史。
+   */
+  _finishCanceled(stop, ctl, ctx) {
+    const { sessionId, traceId, history, tools, histBase } = ctx;
+    const dispatched = ctl?.toolsDispatched || 0;
+    const state = dispatched > 0 ? 'unknown' : 'cancelled';
+    const code = dispatched > 0 ? 'cancel_unknown' : 'cancelled';
+    const reason = dispatched > 0
+      ? `stop requested after ${dispatched} tool call(s) were dispatched; those side effects are not rolled back`
+      : 'stop requested before any tool call was dispatched';
+    if (Array.isArray(history) && typeof histBase === 'number') history.length = histBase;
+    if (ctl) ctl.finalState = state;
+    return this._end(`[${code}] ${reason}`, sessionId, traceId, history, tools, false, null, {
+      stateless: ctl?.stateless === true, record: false,
+      state, code, reason,
+      turns: ctl?.turn ?? 0,
+      tools_dispatched: dispatched,
+      tokens: ctl?.tokens ?? 0,
+      cancel_requested_at: ctl?.canceled?.at ?? Date.now(),
+      ...(stop?.why ? { request_reason: stop.why } : {}),
+    });
+  }
+
+  /**
+   * 预算耗尽的终态。与取消不同，这里**不回滚历史**：预算是一种正常结束（"干到这里为止"），
+   * 已经跑出的工具结果是真的，下一轮应该接着它们继续，而不是假装什么都没发生。
+   * 代价是：如果宿主永远不续跑，会话会停在一串 tool 消息上 —— 这是可读的，不是损坏的。
+   */
+  _finishBudget(kind, ctl, ctx) {
+    const { sessionId, traceId, history, tools, limit, used, overrun_ms } = ctx;
+    const budget = { kind, limit, used };
+    if (overrun_ms != null) budget.overrun_ms = overrun_ms;
+    const reason = kind === 'max_turns'
+      ? `budget.max_turns=${limit} reached (${used} turns used)`
+      : kind === 'wall_ms'
+        ? `budget.wall_ms=${limit}ms exceeded by ${overrun_ms}ms (${used}ms elapsed); the model call already in flight was not aborted`
+        : `budget.max_tokens=${limit} exceeded (${used} tokens reported by the model)`;
+    if (ctl) ctl.finalState = 'budget_exhausted';
+    return this._end(`[BUDGET_EXHAUSTED] ${reason}`, sessionId, traceId, history, tools, false, null, {
+      stateless: ctl?.stateless === true, record: false,
+      state: 'budget_exhausted', code: 'budget_exhausted', reason,
+      budget, turns: ctl?.turn ?? 0, tokens: ctl?.tokens ?? 0,
+    });
+  }
+
+  /**
+   * 按会话请求停止（`agent.cancel` / `POST /api/session/cancel` 的同一个实现）。
+   *
+   * **`accepted:true` 只表示请求已登记**，不表示已经停下：非流式调用没有 AbortSignal，
+   * 所以最坏要等一次模型往返；流式调用在每个分块处检查，通常几十毫秒内停。
+   * 终态（`cancelled` / `unknown`）只出现在 `chat.handle` 的返回值里。
+   */
+  cancel(sessionId, { reason = 'host_requested' } = {}) {
+    const sid = String(sessionId ?? '');
+    const at = Date.now();
+    if (!sid) return { accepted: false, session_id: null, state: 'invalid_session_id', requested_at: at };
+    const live = this._live.get(sid);
+    if (live) {
+      if (!live.canceled) live.canceled = { at, reason: String(reason).slice(0, 200) };
+      return {
+        accepted: true, session_id: sid, state: 'cancelling', requested_at: at,
+        turn: live.turn, tools_dispatched: live.toolsDispatched,
+        note: 'stop requested; the turn stops at its next boundary (at worst one model round-trip, '
+          + 'since the model client exposes no abort signal)',
+      };
+    }
+    if ((this._queued.get(sid) || 0) > 0) {
+      this._preCancel.set(sid, { at, reason: String(reason).slice(0, 200) });
+      return {
+        accepted: true, session_id: sid, state: 'queued', requested_at: at,
+        note: 'the turn has not started yet; it will stop before its first model call',
+      };
+    }
+    return {
+      accepted: false, session_id: sid, state: 'not_running', requested_at: at,
+      note: 'no turn of this session is running in this process; nothing was cancelled',
+    };
+  }
+
+  /** 进程内观测面（只读）。`stats_scope` 明说它不跳进程：别的网关上的轮次它看不到。 */
+  snapshot() {
+    const sessions = [];
+    for (const [sid, ctl] of this._live) sessions.push(this._row(sid, ctl));
+    const liveIds = new Set(this._live.keys());
+    for (const [sid, row] of this._recent) if (!liveIds.has(sid)) sessions.push(row);
+    return {
+      sessions,
+      in_flight: this._live.size,
+      queue_depth: sessions.reduce((n, r) => n + (r.queue_depth || 0), 0),
+      stats_scope: 'process-local',
+    };
+  }
+
+  stat(sessionId) {
+    const sid = String(sessionId ?? '');
+    const live = this._live.get(sid);
+    if (live) return this._row(sid, live);
+    return this._recent.get(sid) || null;
+  }
+
+  /**
+   * 把本次调用的 `capabilities` / `permission_mode` 绑到会话上（只能收窄）。
+   * 没有执行器时**拒绝执行**，不是静默忽略 —— 忽略了就等于这一轮在"声称更窄"的同时没有门。
+   */
+  async _bindSessionPolicy(sessionId, params, traceId) {
+    const caps = params?.capabilities;
+    const mode = params?.permission_mode;
+    if (caps === undefined && mode === undefined) return false;
+    const ex = this.core.getService('tool-executor');
+    if (typeof ex?.setSessionPolicy !== 'function') {
+      throw Object.assign(new Error(
+        'session_policy_unavailable: this assembly has no tool-executor that can enforce a per-session '
+        + 'capability policy. Refusing to run a turn that claims a narrower surface than it can enforce.'),
+      { code: 'session_policy_unavailable', contractError: true });
+    }
+    try {
+      await ex.setSessionPolicy(sessionId, { capabilities: caps, permission_mode: mode, source: 'chat.handle' });
+    } catch (err) {
+      err.contractError = true;   // 名单里写了不存在的能力 ⇒ 400，而不是跑一轮再报错
+      throw err;
+    }
+    this.core.log?.('debug', `[haotian-lite] session policy bound for ${sessionId} (trace ${traceId})`);
+    return true;
+  }
+
+  _unbindSessionPolicy(sessionId) {
+    // 解绑失败不该把已经完成的一轮变成失败：它影响的是下一轮的默认面，不是这一次的结果。
+    try { this.core.getService('tool-executor')?.clearSessionPolicy?.(sessionId, { source: 'chat.handle' }); }
+    catch (err) { this.core.log?.('debug', `[haotian-lite] session policy unbind failed: ${err?.message || err}`); }
+  }
+
+  /** 展示层过滤：让"看得见"与"调得动"一致；真正的门仍在执行器的派发期。 */
+  async _policyVisibleTools(sessionId, tools) {
+    const ex = this.core.getService('tool-executor');
+    if (typeof ex?.visibleToolsForSession !== 'function') return tools;
+    try { return await ex.visibleToolsForSession(sessionId, tools); }
+    catch (err) {
+      this.core.log?.('debug', `[haotian-lite] session-policy visibility filter fell back to unfiltered: ${err?.message || err}`);
+      return tools;
+    }
   }
 
   _genTraceId() {

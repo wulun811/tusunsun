@@ -227,7 +227,10 @@ export async function setup(runner) {
       return src.slice(open);
     };
     const starts = [...src.matchAll(/core\.command\(\s*['"]chat\.handle['"]/g)].map((m) => m.index);
-    const bare = starts.filter((idx) => !/_chatTimeoutMs\(\)/.test(pickCall(idx)));
+    // 判据是「经 `_chatTimeoutMs` 取超时」，不是「必须写成空参调用」：R0-180 给这个方法加了
+    // 一个**下界**实参（`budget.wall_ms` 必须先于传输层超时到达），空参匹配会把这一处
+    // 误判成“没传超时”。下界不得把超时改小这一条由下面单独锁。
+    const bare = starts.filter((idx) => !/_chatTimeoutMs\s*\(/.test(pickCall(idx)));
     assertEquals(bare.length, 0,
       `有 ${bare.length} 处 chat.handle 调用未传超时（将回落 30s 默认）`);
 
@@ -238,6 +241,9 @@ export async function setup(runner) {
     g.core = new Core();
     const ms = g._chatTimeoutMs();
     assert(ms > 30000, `对话超时必须大于命令默认 30s，实际 ${ms}ms`);
+    // 下界只能抬高：它能表达“预算比网关默认超时更晚到期”，但绝不能把超时改小。
+    assertEquals(g._chatTimeoutMs(ms + 60000), ms + 60000, '下界高于基数时必须抬高');
+    assertEquals(g._chatTimeoutMs(1), ms, '低于基数的下界不得把超时改小');
     console.log(`       [实测] ${calls.length} 处 chat.handle 全部带超时；解析值 ${ms}ms（> 30000）`);
   });
 

@@ -1,7 +1,7 @@
 # Cell API 参考（`cell-runtime` 服务）
 
 > 本文件里**每一个返回形状都是从真实调用取下来的**，不是从源码推断的。
-> 取形状的脚本见文末 §7。凡标 `Promise` 的必须 `await` —— 忘了 `await` 拿到的是
+> 取形状的脚本见文末 §8。凡标 `Promise` 的必须 `await` —— 忘了 `await` 拿到的是
 > 恒真对象（本项目已经在这上面栽过两次：`hasCapability`、`callCapability`）。
 
 ## 0. 拿到服务
@@ -52,8 +52,20 @@ await svc.create(spec, { trusted: true });
 }
 ```
 
-失败：`workspace_not_allowed` / `cell_quota_exceeded`（同 Core 第二个 Cell）/
-`cell_identity_conflict`（同一 `cell_id` 换工作区）/ `unsupported_runtime` / `cell_gate_unavailable`。
+失败（全部带 `code` 与 `contractError:true`）：
+
+| code | 何时 |
+| --- | --- |
+| `invalid_cell_spec` | 字段缺失/越界/`workspace` 不是绝对路径/`runtime.extra`/`limits.max_active_tasks≠1` |
+| `unsupported_schema_version` | `schema_version` 主版本不认识（当前只收 `tusunsun.cell/v0`） |
+| `unsupported_runtime` | `runtime.kind !== 'process'`（`shared_process` / `remote` 是**明确拒绝**，不是没实现） |
+| `cell_id_conflict` | **本进程**已存在同 `cell_id` 的登记 |
+| `cell_quota_exceeded` | 本 Core 已经有**另一个** Cell（v0 硬约束：1 Cell : 1 Core : 1 进程） |
+| `cell_identity_conflict` | 同一个 `stateDir` 上同 `cell_id` 换工作区（身份带着它的目录） |
+| `cell_gate_unavailable` | 已注册的执行器无法承载这道能力门 |
+| `workspace_binding_unavailable` | `workspace` 存在但不是目录，或绑定失败 |
+| `workspace_not_allowed` | 没传 `opts.trusted:true` 且工作区不在宿主的白名单里 |
+| `state_dir_owned` | 同一个 `stateDir` 已被另一个活着的进程/实例持有 |
 
 ### `describe(cellId)` → `CellStatus`（同步）
 
@@ -151,6 +163,7 @@ Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”�
 - **`_reply` 不落盘**：它以 `_` 前缀标识为进程内私有（不进行为结果信封，也不进 `results.jsonl`），
   要回读已落盘的结构化结果用 `resultRecords(cellId)`。
 
+
 ## 2. 任务
 
 ### `accept(cellId, task)` → `Promise<AcceptReceipt>`（同步实现，调用方不必 await）
@@ -169,7 +182,11 @@ Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”�
 
 ### `execute(cellId, task?, opts?)` → `Promise<WorkResult>`
 
-不传 `task` 就用 `accept` 时那个。真实返回：
+不传 `task` 就用 `accept` 时那个。
+
+**阻塞语义**：返回的 Promise 在任务结束（或预算判死）时兑现。没有 `run_id`、没有进度流、
+没有 `cancel`；等待方在兑现前只能靠 `describe(cellId)` 看 `state`/`active_task_id`。
+0.20.2 的真实返回：
 
 ```json
 {
@@ -177,18 +194,37 @@ Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”�
   "task_id": "T1", "attempt": 1,
   "cell_id": "c1", "incarnation_id": "run-...-1",
   "execution_state": "succeeded",
-  "artifacts": [], "evidence": [],
-  "usage": { "steps": 0, "model_calls": null, "wall_ms": 2 },
+  "artifacts": [{ "path": "outputs/report.json", "sha256": "f31d4c43...", "bytes": 34 }],
+  "evidence": [],
+  "usage": { "steps": 0, "model_calls": null, "wall_ms": 3 },
   "error": null,
+  "_reply": "DONE",
   "record_id": "run-...-1:T1#1",
   "durability_outcome": { "state": "persisted", "attempts": 1, "error": null },
   "state_persisted": true
 }
 ```
 
-- `execution_state` ∈ `succeeded | failed | timed_out | unknown`
-- **`record_id` 是归并键**：`${incarnation_id}:${task_id}#${attempt}`。落盘行数不等于完成次数。
-- `usage.model_calls` 在无模型装配下是 `null`（不是 0）
+| 字段 | 含义 |
+| --- | --- |
+| `execution_state` | `succeeded` / `failed` / `rejected` / `timed_out` / `cancel_requested` / `unknown`（全集 6 个） |
+| `artifacts[]` | `{path, sha256, bytes}`；`path` 相对工作区，`sha256` 是写入后**重算**的 |
+| `evidence[]` | 结构化证据，v0 允许为空 |
+| `usage` | `{steps, model_calls, wall_ms}`；`model_calls:null` = **没测**（不是 0）；无 agent 循环时 `steps` 为 0 |
+| `error` | `null` 或字符串/对象；失败原因的**唯一权威位置** |
+| `record_id` | 归并键 `${incarnation_id}:${task_id}#${attempt}` |
+| `durability_outcome` | `{state, attempts, error}`；只有 `state:'persisted'` 代表这一笔已在 `results.jsonl` 里 |
+| `state_persisted` | 上一条的便捷读数 |
+| `_reply` | **只在返回值里**：`chat.handle` 的原文回复。不落盘、`resultRecords` 里也没有；下划线前缀不属于稳定合同 |
+
+**同一 `task_id` 重跑 = 真的再跑一次**（0.20.2 实测：`chat.handle` 被调 2 次、产物被覆盖）。
+`record_id` 不变，于是 `resultRecords` 的 `raw_lines` 变 2、`duplicate_lines` 变 1、`records` 只留
+**最后一条**。—— `task_id` **不是幂等键**。防重跑只有两条路：递增 `attempt`，或宿主在派遣前
+先查 `resultRecords`。（`record_id` 里带 `attempt` 就是为了这条路。）
+
+失败/超时/未知的区分：`failed` 伴随 `error`（执行真的出错）；`timed_out` 表示预算到期且
+**在飞的那次调用没被中断**（`error` 里会写明副作用未撤销）；`unknown` 只在“上一世运行在任务
+在飞时结束（崩溃/重启）”后出现 —— 那是 `resolveAfterRestart` 的结果，不是本进程给的。
 
 ### `resultRecords(cellId)` → `Promise<{records, raw_lines, duplicate_lines, unreadable_lines}>`
 
@@ -196,9 +232,19 @@ Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”�
 
 ```json
 { "cell_id": "c1",
-  "records": [ /* 每笔一条，同 id 多行只留一条 */ ],
+  "records": [ /* 每笔一条，同 id 多行只留最后一条 */ ],
   "raw_lines": 1, "duplicate_lines": 0, "unreadable_lines": 0 }
 ```
+
+| 事实 | 值 |
+| --- | --- |
+| 物理位置 | `<stateDir>/cells/<cell_id>/results.jsonl`（只追加，不重写） |
+| 保留期 | **无 TTL、无上限、不自动清理**；`close` 不删它 |
+| 跨重启 | 能读（文件在 `stateDir` 里）；读到的是**上一世运行**写下的行 |
+| 含 `_reply` 吗 | **不含**。`_reply` 只在 `execute` 的返回值上 |
+| 不含 `durability_outcome` / `state_persisted` | 这两个字段也只存在于返回值 |
+| `_` 前缀字段 | 不属于稳定合同；本文只承诺非下划线字段 |
+| 坏行 | 计入 `unreadable_lines`，不静默丢弃 |
 
 `unreadable_lines > 0` 表示有坏行/半行——**不静默丢弃**。
 
@@ -315,6 +361,13 @@ Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”�
 | `cell_not_ready` | 任务 | 状态不是 `ready` |
 | `close_incomplete` | 关闭 | 落盘失败，清理未完成（**不是**已关闭） |
 | `unknown_cell` | 通用 | `cell_id` 不存在 |
+| `invalid_cell_spec` | 准入 | Spec 字段缺失/越界/相对路径/`runtime.extra` |
+| `cell_id_conflict` | 准入 | 本进程已存在同 `cell_id` |
+| `invalid_task` | 任务 | Task 字段缺失/越界/`goal` 空 |
+| `workspace_conflict` | 任务 | Task 自带 `workspace`/`workDir`/`work_dir`/`cwd` |
+| `invalid_state_transition` | 生命周期 | 非法状态迁移（如 `busy → stopped`） |
+| `invalid_result` | 任务 | WorkResult 不合法（自报 success 但没带 sha256 等） |
+| `unsupported_schema_version` | 准入 | `schema_version` 主版本不认识 |
 
 容量限额（`status:'blocked'`）**不是错误码**，是执行器在派发前返回的拒绝结果。
 
@@ -345,7 +398,82 @@ Cell 会继承上一个 Cell 留下的状态，“1 Cell : 1 Core : 1 进程”�
 }
 ```
 
-## 7. 这份文档怎么保证没写错
+`CellSpec` 逐字段（`required` 列只写“必填/可选/默认”）：
+
+| 字段 | 必填 | 取值 | 越界时 |
+| --- | --- | --- | --- |
+| `schema_version` | 必填 | `tusunsun.cell/v0` | `unsupported_schema_version` |
+| `cell_id` | 必填 | `[A-Za-z0-9][A-Za-z0-9._@+-]*`，≤128 | `invalid_cell_spec` |
+| `workspace` | 必填 | **绝对路径**，且必须已存在的目录 | `invalid_cell_spec` / `workspace_binding_unavailable` |
+| `capabilities` | 可选（[]） | 能力 id 数组，≤64 条 | 形状错：`invalid_cell_spec` |
+| `permission_mode` | 可选（`auto`） | `auto\|ask\|read-only\|auto-edit\|full-auto` | `invalid_cell_spec`；`full-auto` 另外需要宿主 `cells.allowFullAuto` |
+| `runtime` | 可选（`{kind:'process'}`） | 只收 `process` | `unsupported_runtime` |
+| `limits.max_active_tasks` | 可选（1） | **只能 1** | 其他值 `invalid_cell_spec` |
+| `limits.max_children` | 可选（0） | 0..宿主上限 | 超过上限 `capability_denied` |
+| `limits.max_steps` | 可选 | 1..10000 | `invalid_cell_spec` |
+| `limits.wall_ms` | 可选 | 1..86400000 | `invalid_cell_spec` |
+| `state_ref` | 可选 | `local:<相对路径>` | `invalid_cell_spec` |
+| `model_ref` | 可选 | 非空字符串 | 仅校验与记录：**v0 没有任何读者**，不据此选模型 |
+| `tags` | 可选（[]） | 字符串数组，≤32 | `invalid_cell_spec` |
+
+`TaskEnvelope` 逐字段：
+
+| 字段 | 必填 | 取值 | 越界时 |
+| --- | --- | --- | --- |
+| `schema_version` | 必填 | `tusunsun.task/v0` | `unsupported_schema_version` |
+| `task_id` | 必填 | 不透明 id，≤128 | `invalid_task` |
+| `attempt` | 可选（1） | 1..1e6 | `invalid_task` |
+| `target_cell_id` | 必填 | 必须等于目标 Cell | `invalid_task` / `unknown_cell` |
+| `goal` | 必填 | 非空，≤20000 字 | `invalid_task` |
+| `inputs` | 可选（[]） | `[{kind, ref}]`，`ref` 为工作区内相对路径 | `invalid_task` |
+| `required_capabilities` | 可选（[]） | 能力 id 数组，≤64 | 形状错：`invalid_task`；不在交集：`capability_denied` |
+| `budget.max_steps` / `budget.wall_ms` | 可选 | 1..10000 / 1..86400000 | `invalid_task` |
+| `acceptance` | **必填** | `{required_artifacts:[], checks:[]}` | `invalid_task` |
+| `workspace`/`workDir`/`work_dir`/`cwd` | **禁止** | —— | `workspace_conflict` |
+
+两只信封里**没有任何字段能让调用方改工作区或提高能力**：工作区由 Spec 且仅由 Spec 定，
+能力取三集合交集（宿主上限 ∩ Spec ∩ Task），`permission_mode` 只做**收窄**（`read-only` 时
+派发期直接 `permission_denied`），与 `capabilities` 是两层、互不推导。
+
+## 7. 消费者十问（逐条回答）
+
+> 以下每条都在 0.20.2 上跑过一次 `create → describe → accept → execute → resultRecords →
+> verify → 同任务重跑 → close → 重关`，返回原样打印；形状与本文 §1–§6 一致。
+
+1. **`cell_id` 冲突回什么？** 同进程重复建 → `cell_id_conflict`；已经有一个**别的** Cell →
+   `cell_quota_exceeded`（即使那个 Cell 已 `close`，登记仍在）。
+2. **`workspace` 必须绝对路径吗？** 是，且必须已存在。相对路径 → `invalid_cell_spec`；
+   不存在 → `invalid_cell_spec`；存在但不是目录 → `workspace_binding_unavailable`。
+   对外回报的是 `realpath` 之后的值（`workspace_realpath`）。
+3. **`capabilities` 与 `permission_mode` 怎么交集？** 不交集，是两层：前者选**哪些能力 id**
+   可用（宿主∩Spec∩Task，在 `accept` 定型），后者是**执行期模式**（`read-only` 会让非只读能力
+   在派发期 `permission_denied`）。写 `capabilities:['tool.write'] + permission_mode:'read-only'`
+   不会因为声明了写就变得可写。
+4. **`execute` 是阻塞的吗？** 是。返回即终态，没有 `run_id`、没有事件流、没有 `cancel`。
+5. **`WorkResult` 到底有哪些字段？** 见 §2 的表。注意 `_reply` 只在返回值里、不落盘；
+   `durability_outcome.state:'persisted'` 才是“已入账”。
+6. **同一 `task_id` 重跑会二次执行吗？** **会**。`chat.handle` 会再被调用一次，产物被重写；
+   `record_id` 相同，`resultRecords` 里 `raw_lines` +1、`duplicate_lines` +1，`records` 只留最后一条。
+   `task_id` 不是幂等键。
+7. **`describe` 的字段取值？** `state ∈ created|ready|busy|draining|stopped|faulted`；
+   `phase` 平时是 `null`，只在准备/结算阶段取 `prepared`/`committed`/`settling`（异常时是内部阶段名，
+   如 `prestart_persist_failed`，不要对它做枚举匹配）；
+   `active_task_id` 空闲时为 `null`；`workspace_realpath` 是创建时的真实路径快照，
+   `close` 之后仍然可读（不会变回进程默认根）。
+8. **`close({force:true})` 的“请求停止”与“已停止”？** `close` 返回里 `closed:true` 是**已停止**；
+   `closed:false, closing:true` 是**已撤销资格、清理未完成**（`cleanup_pending` 说要重试哪几项）。
+   已撤销之后迟到的工具调用一律 `execution_revoked`，零副作用；已经发生的副作用不回滚。
+   关闭后的 `accept` → `cell_not_ready`，`execute` → `cell_not_ready`（不是 `unknown`）。
+9. **`resultRecords` 的形状/保留期/跨重启/`_reply`？** 见 §2 的表：追加文件、无 TTL、跨重启可读、
+   不含 `_reply`。
+10. **`verify` 的判据？** 没有该任务的记录 → `rejected`；`execution_state≠succeeded` → `rejected`；
+    产物路径越界/读不出/hash 与记录不符 → `inconclusive`；缺 `required_artifacts` → `rejected`；
+    全部核过 → `accepted`（`checked` 列出核过的路径）。
+
+**没做的三件事**（P2，尚未做）：异步 `run_id`、生命周期事件流、`cell.cancel`/`cell.reclaim`/
+`cell.result(id)`。当前消费方式是“独立进程 + 轮询 `describe`”，那条路不依赖上面任何一项。
+
+## 8. 这份文档怎么保证没写错
 
 取形状的脚本（本机可复跑，只读）：
 

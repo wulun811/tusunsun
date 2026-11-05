@@ -153,7 +153,7 @@ core.on('cell.closed', (e) => {
 想知道"正确用法长什么样"时，直接读它，比读本文件快。
 
 ```bash
-bash verification/external-consumer/run.sh tusunsun-0.20.2.tgz
+bash verification/external-consumer/run.sh tusunsun-0.20.3.tgz
 ```
 
 ## 5. 性能参考（本机同机对比，不是 SLA）

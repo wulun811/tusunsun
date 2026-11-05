@@ -219,7 +219,7 @@ const result = await core.runPipeline('inbound', message);
 ```text
 src/core/          ← 唯一受行数预算约束的内核（4896 / 4896）
 src/bootstrap/     ← 启动引导：解析 argv、选场景、拉起 PluginManager（不受行数预算）
-plugins/           ← 唯一的插件面（80 个 js/mjs，26 175 行；2026-11-03 实测）
+plugins/           ← 唯一的插件面（80 个 js/mjs，26 849 行；2026-11-05 实测）
   *.js             ← 40 个顶层文件（含 recycle-advisor 参考实现）
   tools/           ← 工具插件家族（10 个）
   _lib/            ← 内部模块容器（不是插件目录；`_` 前缀由 resolvePluginDirs 真的跳过）
@@ -228,8 +228,8 @@ plugins/           ← 唯一的插件面（80 个 js/mjs，26 175 行；2026-11
 两个常被误解的点：
 
 1. **行数门禁只覆盖 `src/core/` 这一层。** 门禁只统计 `src/core/*.js`。
-   `src/` 合计 5236 行（core 4896 + bootstrap 340），`plugins/` **26 175 行 / 80 文件**
-   （2026-11-03 实测，口径：`find plugins \( -name '*.js' -o -name '*.mjs' \) | xargs wc -l`）——
+   `src/` 合计 5236 行（core 4896 + bootstrap 340），`plugins/` **26 849 行 / 80 文件**
+   （2026-11-05 实测，口径：`find plugins \( -name '*.js' -o -name '*.mjs' \) | xargs wc -l`）——
    单是插件面就是内核的 5 倍，
    另有 `vendor/liuhe-lite/` 7 201 行第三方代码（**可选器官，默认不装配**）——
    所以"核心行数纹丝不动"只在 `src/core/` 范围内成立，

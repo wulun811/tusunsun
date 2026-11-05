@@ -254,11 +254,12 @@ const EXECUTOR_REJECTION_CODES = new Set([
 // 导出**类**（不只有默认实例）：回归要与生产实例隔离地测信封，默认实例的导出不变。
 export class ToolExecutor {
   name = 'tool-executor';
-  version = '0.8.4b';
+  // 0.8.5（R0-180）：新增按会话的能力/只读策略（`setSessionPolicy` 等，派发期生效）。
+  version = '0.8.5';
   manifest = {
     schema_version: 'tusunsun.plugin/v2',
     name: 'tool-executor',
-    version: '0.8.4b',
+    version: '0.8.5',
     api_version: '1',
     owner: 'platform',
     provides: [
@@ -305,6 +306,9 @@ export class ToolExecutor {
     // 派发时遍历到零条就放行。租约是那条**不会被普通摘钩一起清空**的要求：会话被谁保护过、
     // 拿什么回执证明，都留在这里；派发期逐个验回执，验不过就拒绝。
     this._guardLeases = new Map();
+    // 会话级策略（R0-180 / P1）：sessionId → {capIds, mode, source, at}。
+    // 与 `_guardLeases` 分开：租约回答“这个会话有没有门”，策略回答“这个会话能调什么”。
+    this._sessionPolicies = new Map();
     // 构造即成立的值：init 会按配置覆盖，但“没 init 就用”不得静默变成 0 并发/无超时。
     this._maxParallel = 5;
     this._timeout = 30000;
@@ -426,6 +430,8 @@ export class ToolExecutor {
       this._instanceId = `te-${randomUUID().slice(0, 8)}`;
     }
     if (!Object.hasOwn(this, '_guardLeases')) this._guardLeases = new Map();
+    // 会话策略同理：穿透读会拿到父实例的 Map，`set` 写进去就是两个宿主互相改对方的授权面。
+    if (!Object.hasOwn(this, '_sessionPolicies')) this._sessionPolicies = new Map();
   }
 
   /**
@@ -719,6 +725,163 @@ export class ToolExecutor {
       .map((l) => ({ owner: l.owner, generation: l.generation, live: this._leaseIsLive(l) }));
   }
 
+  // ── 会话级策略（R0-180 / P1）────────────────────────────────
+  /**
+   * 给一个会话绑定**更窄**的能力/只读策略。
+   *
+   * 为什么需要它：`tools.allowlist` 与 `tools.permissionMode` 都是**进程级**的。一个网关同时
+   * 承载只读调查与写入任务时，只读会话不仅能看见写工具，也能真的调它 —— 想让边界成立只能拆
+   * “同类任务专用进程”。这里补的是按会话的那一层，判据落在**派发期**（`_dispatchGuard`），
+   * 不是提示词里的可见性。
+   *
+   * 三条不变式：
+   *   ① **只能收窄**：与进程级 `tools.permissionMode`、Cell 能力门取交集，永不覆盖它们；
+   *      名单里写进程没有的能力不会让它变得可用。
+   *   ② **按解析出的能力判**：登记时把名字解析成能力 id（解析不出来当场拒绝），派发时只比
+   *      能力 id —— 否则“名字安全、能力危险”的别名又能穿过去（R0-142 的形状）。
+   *   ③ **按会话隔离**：键就是 sessionId，一个会话的策略不改变另一个会话的判据。
+   *
+   * 本层**不判“谁有权设置”**：设置方是宿主（`chat.handle` 的调用方），这里保证的只有
+   * “它只能变窄”。真正的租户边界在网关鉴权层。
+   */
+  async setSessionPolicy(sessionId, policy = {}) {
+    const sid = String(sessionId ?? '');
+    if (!sid) {
+      throw Object.assign(new Error('invalid_session_id: setSessionPolicy needs a session id'),
+        { code: 'invalid_session_id' });
+    }
+    const raw = policy?.capabilities;
+    let capIds = null;
+    if (raw !== undefined && raw !== null) {
+      if (!Array.isArray(raw)) {
+        throw Object.assign(new Error('invalid_session_policy: "capabilities" must be an array of capability ids or tool names'),
+          { code: 'invalid_session_policy' });
+      }
+      const resolved = new Set();
+      const unknown = [];
+      for (const name of raw) {
+        if (typeof name !== 'string' || !name) { unknown.push(String(name)); continue; }
+        if (this._hasCapability(name)) { resolved.add(name); continue; }
+        let capId = null;
+        try { capId = (await this._resolveCapability(name)).capId; } catch { capId = null; }
+        if (capId && this._hasCapability(capId)) resolved.add(capId);
+        else unknown.push(name);
+      }
+      if (unknown.length) {
+        // **不静默丢弃**：名单里写错一个名字，静默忽略会让宿主以为它“限制了”，实际没有。
+        throw Object.assign(new Error(
+          `invalid_session_policy: ${unknown.join(', ')} resolve to no registered capability; `
+          + 'an entry that cannot be resolved would silently grant nothing and prove nothing'),
+        { code: 'invalid_session_policy', unknown });
+      }
+      capIds = resolved;
+    }
+    const mode = policy?.permission_mode ?? policy?.mode ?? null;
+    if (mode !== null && mode !== 'read-only') {
+      // 只接受**收窄方向**。ask/auto/full-auto 是 Cell Spec 的模式；让会话自己声明它们
+      // 就等于让会话给自己提权。
+      throw Object.assign(new Error(
+        `unsupported_permission_mode: a session policy may only narrow (accepts "read-only"); got "${String(mode).slice(0, 40)}"`),
+      { code: 'unsupported_permission_mode' });
+    }
+    if (capIds === null && mode === null) {
+      throw Object.assign(new Error('invalid_session_policy: a session policy needs "capabilities" and/or permission_mode="read-only"'),
+        { code: 'invalid_session_policy' });
+    }
+    const record = {
+      sessionId: sid, capIds, mode,
+      source: String(policy?.source ?? 'host').slice(0, 64),
+      at: Date.now(),
+    };
+    this._sessionPolicies.set(sid, record);
+    this.core?.emitFast?.('tool.session_policy_bound', {
+      sessionId: sid, capabilities: capIds ? [...capIds] : null, permission_mode: mode,
+      source: record.source, timestamp: record.at, sourcePlugin: 'tool-executor',
+    });
+    return this.getSessionPolicy(sid);
+  }
+
+  /** 撤销会话策略。给出 `source` 时只撤自己那一份（不误删别人的）。返回是否真的撤了。 */
+  clearSessionPolicy(sessionId, { source = null } = {}) {
+    const sid = String(sessionId ?? '');
+    const cur = this._sessionPolicies.get(sid);
+    if (!cur) return false;
+    if (source != null && cur.source !== String(source)) return false;
+    this._sessionPolicies.delete(sid);
+    return true;
+  }
+
+  /** 只读视图（副本）：这个会话当前绑着什么策略。 */
+  getSessionPolicy(sessionId) {
+    const pol = this._sessionPolicies.get(String(sessionId ?? ''));
+    if (!pol) return null;
+    return {
+      session_id: pol.sessionId,
+      capabilities: pol.capIds ? [...pol.capIds].sort() : null,
+      permission_mode: pol.mode,
+      source: pol.source,
+      at: pol.at,
+    };
+  }
+
+  /**
+   * 会话策略的派发期判决（**同步**，与 `_dispatchGuard` 同一个契约）。
+   * 返回 `null` = 无异议；否则返回与其它派发拒绝同形状的 `{block,code,reason}`。
+   */
+  _sessionPolicyRefusal(toolName, capId, sessionId) {
+    const pol = this._sessionPolicies.get(String(sessionId ?? ''));
+    if (!pol) return null;
+    const sid = pol.sessionId;
+    if (pol.mode === 'read-only' && !this._capabilityIsReadOnly(capId)) {
+      return {
+        block: true, code: 'permission_denied',
+        reason: `permission_denied: session "${sid}" is bound to a read-only session policy, but "${toolName}" resolves to `
+          + `${capId == null ? 'an unresolved target' : `"${capId}"`}, which is not a read-only capability.`,
+      };
+    }
+    if (capId == null) {
+      return {
+        block: true, code: 'capability_denied',
+        reason: `capability_denied: session "${sid}" has a session capability policy, and "${toolName}" does not resolve to a `
+          + 'registered capability. An unresolved target cannot be proven to be inside the policy.',
+      };
+    }
+    if (pol.capIds && !pol.capIds.has(capId)) {
+      return {
+        block: true, code: 'capability_denied',
+        reason: `capability_denied: capability "${capId}" is not in the session capability policy of "${sid}" `
+          + `(allowed: ${[...pol.capIds].sort().join(', ') || '(none)'}). The policy is matched against the resolved `
+          + 'capability id and can only narrow what the process already grants.',
+      };
+    }
+    return null;
+  }
+
+  /**
+   * 按会话策略过滤**展示**用的工具表。
+   *
+   * 这不是权限门（门在 `_dispatchGuard`）：它只避免“看得见、点了必失败”的谎 —— 模型会据此
+   * 反复重试，并把“策略禁止”误判成“工具坏了”。因此解析不出能力的工具**保留**（fail-open）：
+   * 展示层的失败不该让一个本来可用的工具消失，真正的拒绝在派发期。
+   */
+  async visibleToolsForSession(sessionId, tools) {
+    const pol = this._sessionPolicies.get(String(sessionId ?? ''));
+    if (!pol || !pol.capIds || !Array.isArray(tools) || tools.length === 0) return tools;
+    const kept = [];
+    const hidden = [];
+    for (const t of tools) {
+      const name = t?.name ?? t?.function?.name;
+      let capId = null;
+      try { capId = (await this._resolveCapability(name)).capId; } catch { capId = null; }
+      if (capId == null || pol.capIds.has(capId)) kept.push(t);
+      else hidden.push(name);
+    }
+    if (hidden.length) {
+      this.core?.log?.('debug', `[tool-executor] tools hidden by session policy of ${pol.sessionId}: ${hidden.join(',')}`);
+    }
+    return kept;
+  }
+
   /**
    * 这个会话是否处在“必须有门”的保护之下（rc.29）。
    *
@@ -887,7 +1050,12 @@ export class ToolExecutor {
       };
     }
 
-    // ② 宿主/上层注册的派发期复核。
+    // ② 会话级策略（R0-180 / P1）：只能比上一段**更窄**，不可能更宽。
+    // 放在能力已解析之后、任何 await 之前：这里比的是解析出的能力 id，不是请求名。
+    const sessionRefusal = this._sessionPolicyRefusal(toolName, capId, sessionId);
+    if (sessionRefusal) return sessionRefusal;
+
+    // ③ 宿主/上层注册的派发期复核。
     for (const hook of this._dispatchHooks) {
       try {
         const r = hook.fn(toolName, capId, args, sessionId);
