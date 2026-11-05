@@ -48,8 +48,11 @@ jobs:
               grep -aE "FAIL|✗|Error|Summary|Total:|Failed:" test-output.log | tail -80 | sed 's/\x1b\[[0-9;]*m//g'
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            sed 's/\x1b\[[0-9;]*m//g' test-output.log | tail -120 \
-              | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            sed 's/\x1b\[[0-9;]*m//g' test-output.log > test-output.clean.log
+            {
+              grep -aA 12 "=== Final Summary" test-output.clean.log | head -20
+              grep -aA 4 -E "^ +FAIL |未被实际执行|Failed to load|用例数低于基线|退出码 [0-9]" test-output.clean.log | head -60
+            } | while IFS= read -r line; do echo "::error::${line:0:900}"; done
           fi
           exit $rc
 
@@ -87,8 +90,11 @@ jobs:
               grep -aE "FAIL|✗|Error|Summary|Total:|Failed:" test-output.log | tail -80 | sed 's/\x1b\[[0-9;]*m//g'
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            sed 's/\x1b\[[0-9;]*m//g' test-output.log | tail -120 \
-              | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+            sed 's/\x1b\[[0-9;]*m//g' test-output.log > test-output.clean.log
+            {
+              grep -aA 12 "=== Final Summary" test-output.clean.log | head -20
+              grep -aA 4 -E "^ +FAIL |未被实际执行|Failed to load|用例数低于基线|退出码 [0-9]" test-output.clean.log | head -60
+            } | while IFS= read -r line; do echo "::error::${line:0:900}"; done
           fi
           exit $rc
 
