@@ -161,7 +161,7 @@ Measured in the `0.20.3` three-platform CI (run `42053032645`):
 | Unit tests | **1,537 / 1,537 pass** (Ubuntu) | same suite passes; repo-level cases recorded as NOT_RUN |
 | Integration | **74 / 74 pass** (Ubuntu) | same suite passes; browser prerequisites recorded as NOT_RUN when absent |
 | Smoke | **2 / 2** | **2 / 2** |
-| Counterexample probes | 27 probes (0.20.2 measurement; the kernel is unchanged) | same (probes ship with the package) |
+| Counterexample probes | **27 probes all rc=0** (0.20.2 measurement; the kernel and probes are unchanged) | same (probes ship with the package) |
 | Release gate | run separately per the release checklist; SKIP is never counted as pass | same |
 
 **Why the artifact form does not sign off as all-green**: the artifact ships without `verification/`, `.github/` and `package-lock.json`; those repo-level cases are recorded as NOT_RUN and **never counted as passes**. The two numbers answer two different questions and never stand in for each other.
