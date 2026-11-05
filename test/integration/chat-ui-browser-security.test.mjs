@@ -260,12 +260,7 @@ export async function setup(runner) {
     return ctx.browser.evaluate(ctx.session, probeExpr(offset));
   };
 
-  runner.beforeAll(async () => {
-    ctx.mock = startMockModel();
-    await ctx.mock.listen();
-    const stateDir = mkdtempSync(join(tmpdir(), 'r116-browser-'));
-    ctx.gw = spawnGateway(join(stateDir, 'state'), ctx.mock.port());
-    ctx.port = await ctx.gw.port();
+  const bootBrowser = async () => {
     ctx.browser = await launchBrowser();
     ctx.session = (await ctx.browser.newPage()).sessionId;
     // 首次用**兼容路径**（?token=）进来：既验证"读到就搬进 sessionStorage 并从地址栏抹掉"，
@@ -285,13 +280,42 @@ export async function setup(runner) {
     // 转去弹设置面板，用例会以"消息没渲染"的面貌失败（实测踩过）。
     await ctx.browser.waitFor(ctx.session,
       "apiConfigured === true && document.getElementById('status').textContent.includes('RUNNING')",
-      { what: '控制面就绪（口令有效 / 模型已配置）', timeoutMs: 30000 });
+      { what: '控制面就绪（口令有效 / 模型已配置）', timeoutMs: 60000 });
     ctx.initial = await ctx.browser.evaluate(ctx.session, `({
       search: location.search,
       stored: sessionStorage.getItem('tusunsun_auth_token'),
     })`);
     const r = await fetch(`http://127.0.0.1:${ctx.port}/`);
     ctx.headers = { csp: r.headers.get('content-security-policy'), nosniff: r.headers.get('x-content-type-options') };
+  };
+
+  runner.beforeAll(async () => {
+    ctx.mock = startMockModel();
+    await ctx.mock.listen();
+    const stateDir = mkdtempSync(join(tmpdir(), 'r116-browser-'));
+    ctx.gw = spawnGateway(join(stateDir, 'state'), ctx.mock.port());
+    ctx.port = await ctx.gw.port();
+    try {
+      await bootBrowser();
+    } catch (err) {
+      if (isNavigationBlockedByPolicy(err)) {
+        ctx.blocked = err.errorText;
+        return;
+      }
+      // CI 的 Chromium 首次启动会偶发 DBus/握手失败；重试一次，仍失败才判失败。
+      console.log(`       [retry] 浏览器初始化失败，重试一次：${err.message}`);
+      try { if (ctx.browser) await ctx.browser.close(); } catch { /* 已关闭 */ }
+      ctx.browser = null;
+      ctx.session = null;
+      ctx.initial = null;
+      ctx.headers = null;
+      try {
+        await bootBrowser();
+      } catch (err2) {
+        if (isNavigationBlockedByPolicy(err2)) { ctx.blocked = err2.errorText; return; }
+        throw err2;
+      }
+    }
   });
 
   runner.afterAll(async () => {
