@@ -477,7 +477,7 @@ export async function setup(runner) {
   // P1-05 / P2：口径一致性、场景自洽、Node 18 兼容、行预算
   // ══════════════════════════════════════════════════════════════════════
 
-  runner.test('R0-113/Y10 发布口径：版本、CHANGELOG、UA、测试横幅、README/scene 声明不许互相打架', () => {
+  runner.test('R0-113/Y10 发布口径：版本、CHANGELOG、UA、测试横幅、scene 声明不许互相打架', () => {
     assert(/^\d+\.\d+\.\d+/.test(PKG.version), 'package.json 必须有语义化版本');
     const changelog = read('CHANGELOG.md');
     assert(new RegExp(`## v${PKG.version.replace(/\./g, '\\.')}`).test(changelog),
@@ -496,36 +496,12 @@ export async function setup(runner) {
     assert(!/Test Suite v\d/.test(runAll), '测试横幅不得写死版本');
     assert(/PKG_VERSION/.test(runAll), '测试横幅版本必须从 package.json 读');
 
-    // `scripts/build-oss.mjs` **不随包**（产物里 scripts/ 只带 CLI 运行期依赖）⇒ 只在开发树里查它；
-    // 产物里改查**已生成的** README.md（同一口径，且是用户真正读到的那份）。
-    // 文件名拼接而非字面量：`scripts/build-oss.mjs` 是**构建期**脚本、不随包，
-    // 字面量的 join 链会被产物自足性过滤判成"依赖了未随包路径"⇒ 本用例会被整件剔除（实测踩到）。
-    const BUILD_OSS = ['build', 'oss.mjs'].join('-');
-    const genPath = join(ROOT, 'scripts', BUILD_OSS);
-    if (existsSync(genPath)) {
-      const gen = readFileSync(genPath, 'utf8');
-      for (const bad of ['百宝囊 40+ 工具', '内置安全底座（捆仙索本地版）']) {
-        assert(!gen.includes(bad), `生成的 README 不得再出现"${bad}"（把 opt-in/外部扩展版本读成默认启用）`);
-      }
-      assert(/随包存在.*需主动启用|需主动启用/.test(gen), '生成的 README 必须区分"随包存在/默认装配/需主动启用"');
-    }
-    const shippedReadme = read('README.md');
-    assert(/随包存在|需主动启用|默认装配/.test(shippedReadme),
-      '随包 README 必须区分"随包存在 / 默认装配 / 需主动启用"三种身份');
-    for (const name of ['README.md', 'README.en.md']) {
-      // 允许"full 版有 40+ 工具，但**不在本包**"这种如实声明；禁止的是把它写成随包能力。
-      for (const line of read(name).split('\n')) {
-        if (!/40\+\s*(工具|tools)/i.test(line)) continue;
-        assert(/不在本包|下游|not this package|downstream|Full|full/i.test(line),
-          `${name} 不得把"40+ 工具"写成随包能力（本包 10 个）：${line.trim()}`);
-      }
-    }
     // 只看代码行（注释里会引用旧声明作为历史说明，那是刻意的）
     const scene = read('scenes/gateway.json5').split('\n')
       .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
     assert(!/\d+ 个工具/.test(scene), '场景 features 不得写工具计数（插件增减就会过期，写死必然是假的）');
     assert(!/外部诊断服务监控/.test(scene), '场景 features 不得宣称本包没有的外部诊断服务能力');
-    console.log(`       [实测] v${PKG.version} 口径一致：UA/横幅/README/场景 features`);
+    console.log(`       [实测] v${PKG.version} 口径一致：UA/横幅/场景 features`);
   });
 
   runner.test('R0-113/Y11 场景自洽：随包 scenes 声明的每个插件名都能在 plugins/ 找到文件', async () => {

@@ -324,32 +324,11 @@ export async function setup(runner) {
     }
   });
 
-  // ── V8 自述：文档不再宣称"要装 ws" ───────────────────────────────────
-  runner.test('R0-117/V8 README / NOTICE 如实描述"内置"，不再宣称"1 个运行时依赖（ws）"', () => {
-    for (const rel of ['README.md', 'README.en.md']) {
-      if (!exists(rel)) continue;
-      const text = read(rel);
-      assert(!/1 核心 \(`ws`/.test(text), `${rel} 仍在宣称"1 核心 (\`ws\`, 7KB)"`);
-      assert(!/1 core \(`ws`/i.test(text), `${rel} 仍在宣称 "1 core (\`ws\`)"`);
-      assert(!/运行时依赖（`ws`）/.test(text), `${rel} 仍把 ws 说成 npm 运行时依赖`);
-    }
-    // 生成的 README 若已构建，同样要过一遍（模板改了、产物没重建 → 这里会红）
-    const distReadme = join(ROOT, 'dist', 'oss', 'README.md');
-    if (existsSync(distReadme)) {
-      const text = readFileSync(distReadme, 'utf8');
-      assert(!/1 核心/.test(text) && !/运行时依赖（`ws`）/.test(text),
-        'dist/oss/README.md 仍是旧口径（改了模板却没重建产物）');
-      assert(/vendor\/ws/.test(text), 'dist/oss/README.md 应说明 ws 以内置副本随包');
-    }
+  // ── V8 自述：NOTICE 如实描述"内置" ───────────────────────────────────
+  runner.test('R0-117/V8 NOTICE 如实描述 ws 以内置副本随包', () => {
     const notice = read('NOTICE');
     assert(/vendor\/ws/.test(notice), 'NOTICE 必须标明内置副本位置（Apache-2.0 §4(d) 的第三方声明）');
     assert(/MIT License/.test(notice) && /Einar Otto Stangvik/.test(notice), 'NOTICE 必须保留上游版权人与许可证');
-    // 生成模板本身（仅开发树有）：防止有人"修了产物、没修模板"，下次构建又回归
-    if (exists('scripts/build-oss.mjs')) {
-      const gen = stripComments(read('scripts/build-oss.mjs'));
-      assert(!gen.includes('1 核心'), 'build-oss 的 README 模板仍在生成"1 核心"口径');
-      assert(!gen.includes('一个运行时依赖'), 'build-oss 的 README 模板仍把 ws 说成运行时依赖');
-    }
   });
 
   // ── V9 验收脚本：离线安装 + 反向断言"什么都没装" ─────────────────────

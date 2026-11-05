@@ -154,22 +154,6 @@ Examples:
 
 tusunsun builds invariants, contracts, positive and negative examples and regression tests around the six semantics. Design review uses the "four questions and one cross-check" method to pin down authority, source of truth and boundaries, and higher-risk changes get formal constraints and verification where appropriate. **The method is not the proof; re-runnable counterexamples and checkable results are.**
 
-Measured in the `0.20.3` three-platform CI (run `42053032645`):
-
-| Check | Public source checkout | npm artifact (unpacked) |
-| --- | ---: | ---: |
-| Unit tests | **1,537 / 1,537 pass** (Ubuntu) | same suite passes; repo-level cases recorded as NOT_RUN |
-| Integration | **74 / 74 pass** (Ubuntu) | same suite passes; browser prerequisites recorded as NOT_RUN when absent |
-| Smoke | **2 / 2** | **2 / 2** |
-| Counterexample probes | **27 probes all rc=0** (0.20.2 measurement; the kernel and probes are unchanged) | same (probes ship with the package) |
-| Release gate | run separately per the release checklist; SKIP is never counted as pass | same |
-
-**Why the artifact form does not sign off as all-green**: the artifact ships without `verification/`, `.github/` and `package-lock.json`; those repo-level cases are recorded as NOT_RUN and **never counted as passes**. The two numbers answer two different questions and never stand in for each other.
-
-> The release gate is run separately per the release checklist; a public source checkout missing a few evidence scripts records those items as SKIP / NOT_RUN instead of counting them as PASS. Unit, integration, smoke and probe counts come from the public tree and the three-platform CI.
-
-These are measurements of **one version in one environment**. They do not mean every platform, every model and every security property has been formally proven.
-
 ## 05 · Safety: make the LLM think one step further, and make over-reach impossible to talk past
 
 Ask an agent to "clean up temp files". It proposes a recursive delete — but does it remove three caches, or the whole project?

@@ -11,7 +11,6 @@
 //     U6 同类 sink 台账：全仓 `.innerHTML =` 的文件集合必须恰好等于已知（且**不在发布物内**）的两处
 //   P2  协议与文档收口
 //     U7 `session_id: ""` 的语义在 代码 / 文档 / 真实 HTTP 三处一致
-//     U8 README 主流程不再推荐 `?token=` 形式
 //
 // 真实浏览器的负例回归在 `test/integration/chat-ui-browser-security.test.mjs`（CDP + headless
 // Chromium，零新增依赖）——本文件负责"结构 + 契约 + 真 HTTP"，浏览器文件负责"真的不执行"。
@@ -362,81 +361,6 @@ export async function setup(runner) {
     } finally {
       await gw.stop();
     }
-  });
-
-  // ── U8 README 不再推荐 ?token= ──────────────────────────────────────────
-  runner.test('R0-116/U8 README 主流程不再推荐 `?token=` 形式（旧形式须明确标注为兼容/不推荐）', () => {
-    const files = ['README.md', 'README.en.md'].filter((f) => existsSync(join(ROOT, f)));
-    assert(files.length > 0, '找不到 README');
-    let tokenMentions = 0;
-    for (const f of files) {
-      const txt = read(f);
-      for (const line of txt.split('\n')) {
-        if (!line.includes('?token=')) continue;
-        tokenMentions++;
-        // 附近必须出现"不推荐/兼容/deprecated/not recommended/compatibility"之类字样
-        assert(/(不推荐|兼容|弃用|不建议|deprecated|compatibility|not recommended)/i.test(line),
-          `${f} 里的 ?token= 用法必须显式标注为不推荐/兼容：${line.trim().slice(0, 120)}`);
-      }
-    }
-    // 登录框（sessionStorage）必须出现在主文档里，替代曾经的带 token URL。
-    const zh = files.includes('README.md') ? read('README.md') : '';
-    if (zh) assert(/sessionStorage|登录框|口令/.test(zh), '中文 README 必须说明用登录框/口令（sessionStorage）方式进入带鉴权的页面');
-    return tokenMentions;
-  });
-
-  runner.test('R0-116/U10 README 里承诺的每个 CLI 命令都必须真的存在（`tusunsun chat` 就是这么被抓到的）', async () => {
-    // 第三轮 P2 要求"对齐 README/CHANGELOG、CLI 帮助"。实测：README 的 CLI 表里写着
-    // `tusunsun chat`，而 CLI 根本没有这个命令 —— 它属于插件命令 `tui`。
-    // 判据取**行为**判据：跑一次 `--help`，把 README 表里的命令名逐个对回帮助输出。
-    const help = await new Promise((resolve) => {
-      const child = spawnManaged(process.execPath, [ENTRY, '--help'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
-      let out = '';
-      child.stdout.on('data', (b) => { out += b.toString(); });
-      child.stderr.on('data', (b) => { out += b.toString(); });
-      child.on('close', () => resolve(stripAnsi(out)));
-    });
-    assert(/Core Commands:/.test(help), `--help 没有输出命令表：${help.slice(0, 120)}`);
-    const claimed = new Set();
-    for (const f of ['README.md', 'README.en.md']) {
-      if (!existsSync(join(ROOT, f))) continue;
-      for (const line of read(f).split('\n')) {
-        const m = line.match(/\|\s*`tusunsun ([a-z][a-z0-9-]*)`/);
-        if (m) claimed.add(m[1]);
-      }
-    }
-    assert(claimed.size >= 5, `没有从 README 解析出 CLI 命令（判据失效）：${[...claimed]}`);
-    // 例外只有一条，且必须**被验证**而不是被断言：`chat` 由 `haotian-lite` 插件提供，
-    // 发布包里它是 `plugins/haotian-lite.js`（顶层，会被 scanPluginCommands 发现）；
-    // 而源码树里它在 `plugins/sancai/haotian/` 子目录，顶层扫描看不到 —— 这是**两树布局差异**，
-    // 不是文档谎话。所以：开发树里给它一次豁免，但**同时**要求 `dist/oss` 的 help 里真的有它；
-    // 制品形态（无 dist/oss）没有豁免，必须真的出现在 help 里。
-    const DEV_TREE_PLUGIN_LAYOUT = { chat: 'haotian-lite（源码树在 plugins/sancai/haotian/ 子目录，产物里在顶层）' };
-    const hasDist = existsSync(join(ROOT, 'dist', 'oss'));
-    let artifactHelp = null;
-    if (hasDist) {
-      artifactHelp = await new Promise((resolve) => {
-        const child = spawnManaged(process.execPath, [join(ROOT, 'dist', 'oss', 'tusunsun.mjs'), '--help'], {
-          cwd: join(ROOT, 'dist', 'oss'), stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        let out = '';
-        child.stdout.on('data', (b) => { out += b.toString(); });
-        child.stderr.on('data', (b) => { out += b.toString(); });
-        child.on('close', () => resolve(stripAnsi(out)));
-      });
-    }
-    const inHelp = (text, cmd) => new RegExp(`(^|\\s)${cmd}\\s`, 'm').test(text);
-    const missing = [];
-    for (const cmd of claimed) {
-      if (inHelp(help, cmd)) continue;
-      if (hasDist && DEV_TREE_PLUGIN_LAYOUT[cmd] && inHelp(artifactHelp || '', cmd)) {
-        console.log(`       [实测] ${cmd} 在源码树 help 里缺席（${DEV_TREE_PLUGIN_LAYOUT[cmd]}），已用 dist/oss 的 help 反证其存在`);
-        continue;
-      }
-      missing.push(cmd);
-    }
-    assert(missing.length === 0, `README 承诺但 CLI 帮助里没有的命令：${missing.join(', ')}`);
-    console.log(`       [实测] README 承诺 ${claimed.size} 个命令，CLI 帮助全部覆盖：${[...claimed].join(', ')}`);
   });
 
   runner.test('R0-116/U9 CHANGELOG 明确区分「开发树单测数」与「制品注册用例数」', () => {

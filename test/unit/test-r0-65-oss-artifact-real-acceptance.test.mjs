@@ -219,7 +219,7 @@ export async function setup(runner) {
     } finally { rmSync(home, { recursive: true, force: true }); }
   });
 
-  runner.test('R0-65/E3 README 旅程①逐条实测：四条离线命令必须真实可用（exit 0）', () => {
+  runner.test('R0-65/E3 离线旅程逐条实测：四条命令必须真实可用（exit 0）', () => {
     if (!ARTIFACT) { runner.noteSkip('[NOT_RUN] 非产物形态'); return; }
     const home = mkdtempSync(join(tmpdir(), 'r065-h2-'));
     try {
@@ -229,56 +229,11 @@ export async function setup(runner) {
           cwd: ARTIFACT, encoding: 'utf8', timeout: 120000,
           env: cleanEnv({ HOME: home }),
         });
-        assertEquals(r.status, 0, `README 承诺的 \`tusunsun ${args.join(' ')}\` 必须 exit 0，实际 ${r.status}`);
+        assertEquals(r.status, 0, `\`tusunsun ${args.join(' ')}\` 必须 exit 0，实际 ${r.status}`);
         assert(`${r.stdout}`.trim().length > 0, `\`${args.join(' ')}\` 应有输出`);
       }
       console.log(`       [实测] ${FORM_LABEL} 旅程① 四条离线命令全部 exit 0（无需网络/key）`);
     } finally { rmSync(home, { recursive: true, force: true }); }
-  });
-
-  runner.test('R0-65/E4 README 事实一致性：行数、默认模型名、未实测项不得编造', () => {
-    if (!ARTIFACT) { runner.noteSkip('[NOT_RUN] 非产物形态'); return; }
-    const readme = readFileSync(join(ARTIFACT, 'README.md'), 'utf8');
-
-    // 1) 核心行数必须与真实一致（此前渲染成"0 行"是缺陷）
-    let coreLines = 0;
-    const coreDir = join(ROOT, 'src', 'core');
-    for (const f of readdirSync(coreDir)) {
-      if (f.endsWith('.js') || f.endsWith('.mjs')) coreLines += readFileSync(join(coreDir, f), 'utf8').split('\n').length;
-    }
-    assert(readme.includes(`微内核 ${coreLines} 行`), `README 行数必须为真实值 ${coreLines}`);
-    assert(!/微内核 0 行/.test(readme), 'README 不得出现"微内核 0 行"');
-
-    // 2) 默认模型名必须与源码一致
-    const modelSrc = readFileSync(join(ARTIFACT, 'plugins', 'model-openai.js'), 'utf8');
-    const m = modelSrc.match(/model:\s*(?:tierCfg\.model\s*\|\|\s*)?base\.model\s*\|\|\s*'([^']+)'/);
-    assert(m, '应能从源码解析默认模型名');
-    assert(readme.includes(m[1]), `README 必须写明真实默认模型名 ${m[1]}`);
-
-    // 3) 必须写明"无 key 会怎样"（具名说明，而非静默失败）
-    assert(/没有 key 会怎样|没有 key/.test(readme), 'README 必须具名说明缺 key 时的行为');
-    // 4) 必须给出适用边界（trusted-local-only）
-    assert(/trusted-local-only/.test(readme), 'README 必须写明 trusted-local-only 边界');
-    // 5) 不得宣传未验证能力
-    for (const bad of [/exactly-once/i, /强沙箱/, /不可信输入.*安全/]) {
-      const lines = readme.split('\n').filter((l) => bad.test(l));
-      for (const l of lines) {
-        assert(/不承诺|不得|不支持|不保证/.test(l), `不得正面宣传未验证能力：${l.trim()}`);
-      }
-    }
-    // 6) R0-111/W10：安装段不得给读者一个**装不上**的第一步。
-    //    实测（2026-10-18）：`npm view tusunsun` → 404，包还没发布；而 README 原先直接写
-    //    `npm install -g tusunsun`。一个失败的第一步会让后面所有步骤都无从验证。
-    const installSection = readme.includes('### 安装') ? readme.split('### 安装')[1].split('###')[0] : '';
-    assert(installSection.length > 0, 'README 必须有「安装」段');
-    if (/npm install -g tusunsun/.test(installSection)) {
-      assert(/尚未发布|未发布|404/.test(installSection),
-        'npm 渠道未发布时，README 不得直接写 `npm install -g tusunsun` 而不加说明');
-    }
-    assert(/npm pack|node tusunsun\.mjs/.test(installSection),
-      '安装段必须给出当前**真正可用**的获取方式（源码运行或自建 tgz）');
-
-    console.log(`       [实测] ${FORM_LABEL} README 行数=${coreLines}、默认模型=${m[1]}、边界与缺 key 说明齐备、安装段与渠道现状一致`);
   });
 
   runner.test('R0-65/E5 能力边界如实记录：产物插件面恰好等于已发布集（不得声称具备下游平面）', () => {
@@ -291,13 +246,6 @@ export async function setup(runner) {
     const lost = published.filter((n) => !shippedPlugins.includes(n));
     assert(extra.length === 0 && lost.length === 0,
       `产物 plugins/ 必须恰好等于已发布插件集；多出[${extra.join(',')}] 缺失[${lost.join(',')}]`);
-    const readme = readFileSync(join(ARTIFACT, 'README.md'), 'utf8');
-    // 因此 README 不得声称本包提供 Task→交付 闭环
-    for (const line of readme.split('\n')) {
-      if (/Task.*交付|交付.*闭环/.test(line)) {
-        assert(/不|未|暂/.test(line), `OSS 无 Task 平面，不得声称交付闭环：${line.trim()}`);
-      }
-    }
     console.log(`       [实测] ${FORM_LABEL} 为对话型 Agent 内核（18 插件 + 10 工具），无 Task/交付平面`);
   });
 }

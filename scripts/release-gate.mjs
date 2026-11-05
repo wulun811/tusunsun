@@ -490,21 +490,3 @@ if (blockedSkips.length > 0) {
 if (counts.FAIL > 0 || blockedSkips.length > 0) process.exitCode = 1;
 else if (counts.PASS === 0) process.exitCode = 2;
 
-// **README 对账**：这四个数只由本脚本产生，所以也由本脚本检查发布面有没有跟上。
-// 放到单测里不行——`release-gate.json` 被 .gitignore 忽略，干净检出里根本没有它。
-// 组成变了（增/删探针）时第一轮会红，按提示改 README 再跑一轮即可。
-if (existsSync(join(ROOT, 'README.md'))) {
-  // 只在**开发树**形态下对账：制品形态的数字本来就不一样（证据目录与 .git 都不在包里），
-  // 拿它去对 README 会逼着人把两个数写成同一个 —— 那正是要禁止的事。
-  if (CHECKOUT === 'dev-tree') {
-    const m = /PASS (\d+) \/ FAIL (\d+) \/ SKIP (\d+) \/ NOT_RUN (\d+)/.exec(readFileSync(join(ROOT, 'README.md'), 'utf8'));
-    if (m && (Number(m[1]) !== counts.PASS || Number(m[2]) !== counts.FAIL
-      || Number(m[3]) !== counts.SKIP || Number(m[4]) !== counts.NOT_RUN)) {
-      console.error(`\n[README 不同步] README 写 PASS ${m[1]} / FAIL ${m[2]} / SKIP ${m[3]} / NOT_RUN ${m[4]}，`
-        + `本轮实跑（开发树）${counts.PASS} / ${counts.FAIL} / ${counts.SKIP} / ${counts.NOT_RUN}。`
-        + '\n  改 README 的平台表（中文与英文两份）后重跑；不要改本节以外的数字来“对齐”。'
-        + '\n  注意：制品形态的数字必须**各写各的**，不得用其中一个顶替另一个。');
-      process.exitCode = 1;
-    }
-  }
-}

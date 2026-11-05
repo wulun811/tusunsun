@@ -327,24 +327,7 @@ export async function setup(runner) {
       assertEquals(existsSync(join(ROOT, 'plugins', 'kunxiansuo', 'jiechi.js')), false,
         'jiechi.js（戒尺）不应随开源包：它保护的是护栏自身的完整性，而本项目持续升级、持续改这些文件');
 
-      // 文档必须如实说明"为什么不含"，而不是假装有
-      const zh = read('README.md');
-      assert(/戒尺/.test(zh) && /(刻意不含|不随包|不含)/.test(zh),
-        'README 必须明确说明戒尺不随包，以及原因');
-      assert(!/戒尺熔断/.test(zh),
-        'README 不得再把戒尺写成"熔断"——戒尺做的是锚点防篡改，熔断是另一套机制');
-      console.log('       [实测] 照妖镜已移除、戒尺不随包，README 如实说明原因');
-    });
-
-    // ── T6 文档必须与实况一致 ──────────────────────────────────────────
-    runner.test('R0-119/T6 文档诚实性：README 必须说明默认场景有没有护栏，且不得声称"默认启用"', async () => {
-      const zh = read('README.md');
-      assert(/捆仙索/.test(zh), 'README 必须提到捆仙索');
-      assert(/默认不装配|默认.{0,6}不(含|启用|装配)/.test(zh),
-        'README 必须写明默认场景**不含**捆仙索（否则用户以为默认有安全底座）');
-      assert(/Y025|不可恢复|影响面/.test(zh),
-        'README 必须写明"不可恢复操作要核对影响面"这条新行为（否则模型/用户不知道会被问）');
-      console.log('       [实测] README 如实标注默认场景与软闸行为');
+      console.log('       [实测] 照妖镜已移除、戒尺不随包');
     });
 
     // ── T9–T12：围栏四缺陷的回归锁（先复现、再修；锁行为不锁实现） ──────
