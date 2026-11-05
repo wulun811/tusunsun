@@ -50,8 +50,12 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             sed 's/\x1b\[[0-9;]*m//g' test-output.log > test-output.clean.log
             {
+              echo '--- last 12 lines ---'
+              tail -12 test-output.clean.log
+              echo '--- final summary ---'
               grep -aA 12 "=== Final Summary" test-output.clean.log | head -20
-              grep -aA 4 -E "^ +FAIL |未被实际执行|Failed to load|用例数低于基线|退出码 [0-9]" test-output.clean.log | head -60
+              echo '--- fails ---'
+              grep -aA 4 -E "^ +FAIL |未被实际执行|Failed to load|用例数低于基线|退出码 [0-9]" test-output.clean.log | head -40
             } | while IFS= read -r line; do echo "::error::${line:0:900}"; done
           fi
           exit $rc
@@ -92,8 +96,12 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             sed 's/\x1b\[[0-9;]*m//g' test-output.log > test-output.clean.log
             {
+              echo '--- last 12 lines ---'
+              tail -12 test-output.clean.log
+              echo '--- final summary ---'
               grep -aA 12 "=== Final Summary" test-output.clean.log | head -20
-              grep -aA 4 -E "^ +FAIL |未被实际执行|Failed to load|用例数低于基线|退出码 [0-9]" test-output.clean.log | head -60
+              echo '--- fails ---'
+              grep -aA 4 -E "^ +FAIL |未被实际执行|Failed to load|用例数低于基线|退出码 [0-9]" test-output.clean.log | head -40
             } | while IFS= read -r line; do echo "::error::${line:0:900}"; done
           fi
           exit $rc
