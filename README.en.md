@@ -159,7 +159,7 @@ Measured in the `0.20.3` three-platform CI (run `42053032645`):
 | Check | Public source checkout | npm artifact (unpacked) |
 | --- | ---: | ---: |
 | Unit tests | **1,537 / 1,537 pass** (Ubuntu) | same suite passes; repo-level cases recorded as NOT_RUN |
-| Integration | **68 / 68 pass** (Ubuntu) | same suite passes; browser prerequisites recorded as NOT_RUN when absent |
+| Integration | **74 / 74 pass** (Ubuntu) | same suite passes; browser prerequisites recorded as NOT_RUN when absent |
 | Smoke | **2 / 2** | **2 / 2** |
 | Counterexample probes | 27 probes (0.20.2 measurement; the kernel is unchanged) | same (probes ship with the package) |
 | Release gate | run separately per the release checklist; SKIP is never counted as pass | same |

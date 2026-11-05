@@ -50,8 +50,10 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             sed 's/\x1b\[[0-9;]*m//g' test-output.log > test-output.clean.log
             {
-              echo '--- last 12 lines ---'
-              tail -12 test-output.clean.log
+              echo '--- unit tail ---'
+              sed -n '/Running Unit tests/,/Running Integration tests/p' test-output.clean.log | tail -25
+              echo '--- integration tail ---'
+              sed -n '/Running Integration tests/,$p' test-output.clean.log | tail -15
               echo '--- final summary ---'
               grep -aA 12 "=== Final Summary" test-output.clean.log | head -20
               echo '--- fails ---'
@@ -96,8 +98,10 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             sed 's/\x1b\[[0-9;]*m//g' test-output.log > test-output.clean.log
             {
-              echo '--- last 12 lines ---'
-              tail -12 test-output.clean.log
+              echo '--- unit tail ---'
+              sed -n '/Running Unit tests/,/Running Integration tests/p' test-output.clean.log | tail -25
+              echo '--- integration tail ---'
+              sed -n '/Running Integration tests/,$p' test-output.clean.log | tail -15
               echo '--- final summary ---'
               grep -aA 12 "=== Final Summary" test-output.clean.log | head -20
               echo '--- fails ---'

@@ -38,7 +38,7 @@
 
 | 形态 | 单元测试 | 集成 | 冒烟 |
 |---|---|---|---|
-| **开发树**（Ubuntu / macOS CI，Node 22） | 1537 / 1537 通过 / 0 失败 / 0 跳过（Ubuntu）；macOS 同套件通过，`/proc` 依赖项记 NOT_RUN | 68 通过（Ubuntu）；macOS 同套件通过，浏览器/`/proc` 跳过项记 NOT_RUN | 2 / 2 |
+| **开发树**（Ubuntu / macOS CI，Node 22） | 1537 / 1537 通过 / 0 失败 / 0 跳过（Ubuntu）；macOS 同套件通过，`/proc` 依赖项记 NOT_RUN | 74 / 74 通过（Ubuntu）；macOS 同套件通过，浏览器/`/proc` 跳过项记 NOT_RUN | 2 / 2 |
 | **npm 制品**（package 作业，净室安装后） | 同套件通过；仓级/不随包用例记 NOT_RUN | 同套件通过 | 2 / 2 |
 
 - 制品 **446 个文件 / 1,946,667 B（约 1.86 MB；包内文本自身的增删会让字节数略变）**；`src/core/` 8 文件 / 4896 行 / 261345 B 未变。
