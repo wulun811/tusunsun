@@ -13,7 +13,7 @@
 
 ![One-page system architecture](assets/architecture-overview.jpg)
 
-*One-page architecture: entry points, scene assembly, the 8-file kernel and its plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is the `0.20.3` public release.
+*One-page architecture: entry points, scene assembly, the 8-file kernel and its plugin groups; on the right, the capability invocation path and the five-phase scene switch. The kernel shown is the `0.20.4` public release.
 The itemised list (all 50 plugins) is in [System architecture](docs/architecture/system-architecture.md).*
 
 **The figures ship with the repository only — they are not part of the npm package** (the README is in the package, the images are not, so they render as placeholders on npm).
@@ -26,7 +26,7 @@ node tusunsun.mjs scene list
 node tusunsun.mjs scene show chat
 ```
 
-> **Release status**: `0.20.3` is the current public open-source release (`0.20.0` was the first)
+> **Release status**: `0.20.4` is the current public open-source release (`0.20.0` was the first)
 > and is **not published to the npm registry** (`npm view tusunsun` returns 404 — install from source or
 > GitHub). This is a **Developer Preview for trusted local environments**; it does not promise
 > untrusted-code isolation, cross-process exactly-once, or production readiness on every platform.
@@ -117,11 +117,11 @@ The thing developers fear is not volume — it is **not knowing what else to rea
 
 tusunsun keeps long-lived responsibilities in a small kernel and puts fast-moving business capability into plugins and scenes.
 
-| Engineering fact (measured on 0.20.3) | Value |
+| Engineering fact (measured on 0.20.4) | Value |
 | --- | --- |
 | Core size | **4,896 lines / 8 files** (`src/core/`, line budget enforced — see ADR-10) |
 | External npm runtime dependencies | **0** |
-| 0.20.3 tarball | **446 files / ~1.86 MB** (measured with `npm pack`) |
+| 0.20.4 tarball | **446 files / ~1.85 MB** (measured with `npm pack`) |
 | Plugin scale | **40 root plugins + 10 tool plugins + 22 library files**, 26,211 lines total |
 | Bundled third-party code | Yes — `ws` (18 files) and `liuhe-lite` (43 files) ship with provenance and per-file hashes. "No install-time dependencies" is **not** the same as "no third-party code" |
 
@@ -215,9 +215,9 @@ Different scenes, machines, models and concurrency change these numbers. They al
 ### Same-machine comparison (2026-10-31, N=30)
 
 These numbers were measured on the **development-line `0.20.1` tree** against opencode 1.18.29;
-the public `0.20.3` tree has not been re-run. Both kernels are the same 8 files; the differences are
+the public `0.20.4` tree has not been re-run. Both kernels are the same 8 files; the differences are
 public-release comment edits and a Windows scene-path fix (36 bytes net). `0.20.2` added the Y025 model-closure parameters and challenge text, and `0.20.3` adds session-control fields, so per-turn context may shift slightly — keep the
-"measured on the 0.20.1 tree" premise when quoting, and do not present these as a 0.20.3 re-run.
+"measured on the 0.20.1 tree" premise when quoting, and do not present these as a 0.20.4 re-run.
 
 Method: startup = `spawn → HTTP ready endpoint returns <500`; memory = `VmRSS` 1.2 s after ready;
 context = one real request body captured by a local recorder; density = N independent `gateway`
@@ -262,8 +262,8 @@ git clone <repo> && cd tusunsun
 node tusunsun.mjs scene list
 
 # 2) Build a tgz and install that
-npm pack                      # produces tusunsun-0.20.3.tgz
-npm install -g ./tusunsun-0.20.3.tgz
+npm pack                      # produces tusunsun-0.20.4.tgz
+npm install -g ./tusunsun-0.20.4.tgz
 ```
 
 Without a global install, replace `tusunsun` with `node tusunsun.mjs`.
@@ -296,7 +296,7 @@ node tusunsun.mjs start
 To connect a real model, configure the OpenAI-compatible endpoint, model name and API key. Offline checks, scene enumeration and the deterministic Cell examples need no model credentials.
 
 > **Boundaries**: trusted-local and internal integration are usable; the public OSS Developer Preview
-> artifact is **not published to npm** — use the public `0.20.3` tree. We do not promise
+> artifact is **not published to npm** — use the public `0.20.4` tree. We do not promise
 > untrusted-code isolation, cross-process exactly-once, or production readiness on every platform.
 
 For more detail see

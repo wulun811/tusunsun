@@ -53,9 +53,11 @@ class TokenBucket {
 
 class GatewayPlugin {
   name = 'gateway';
+  // 0.6.0（R0-182）：流式 `/v1/chat/completions` 在 `[DONE]` 之前发 `tusunsun_state`
+  // 终态事件（取消 / 预算耗尽），非流式与正常流式形状不变。
   // 0.5.0（R0-180）：新增 `POST /api/session/cancel` 与 `GET /api/session/stats`；
   // OpenAI 兼容面接受 `budget` / `stateless` / `capabilities` / `permission_mode` 扩展字段。
-  version = '0.5.0';
+  version = '0.6.0';
   permissions = ['net.listen'];
   // `registerService('gateway', this)` 与这里声明的服务名必须一致：
   // chat-ui 的 `requires = { gateway }` 在准入闸门里靠它找 provider。
@@ -1163,6 +1165,36 @@ class GatewayPlugin {
     } catch { return () => {}; }
   }
 
+  /**
+   * SSE 写一行。连接已经断开时**不写**：对已 end 的响应再写会抛
+   * `ERR_STREAM_WRITE_AFTER_END`，把一次正常收尾变成 500 事件。
+   */
+  _writeSse(res, obj) {
+    if (!res || res.writableEnded || res.destroyed) return false
+    res.write(`data: ${typeof obj === 'string' ? obj : JSON.stringify(obj)}\n\n`)
+    return true
+  }
+
+  /**
+   * 流式终态事件（R0-182）。字段是**白名单**：只带状态、原因、预算、
+   * 计数与时间戳；prompt、回复正文、工具入参、密钥一律不进这条事件。
+   */
+  _terminalStateEvent(p) {
+    const out = { type: 'tusunsun_state', state: p.state, code: p.code }
+    if (typeof p.reason === 'string') out.reason = p.reason
+    if (p.budget && typeof p.budget === 'object') {
+      const budget = {}
+      for (const k of ['kind', 'limit', 'used', 'overrun_ms']) {
+        if (p.budget[k] !== undefined) budget[k] = p.budget[k]
+      }
+      out.budget = budget
+    }
+    for (const k of ['turns', 'tokens', 'tools_dispatched', 'cancel_requested_at', 'request_reason']) {
+      if (p[k] !== undefined) out[k] = p[k]
+    }
+    return out
+  }
+
   async _handleStreamingChatCompletion(req, res, data, lastMsg, sessionId) {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive',
@@ -1177,34 +1209,35 @@ class GatewayPlugin {
           if (typeof chunk === 'string') delta.content = chunk
           else if (chunk?.reasoning) delta.reasoning_content = chunk.reasoning
           else if (chunk?.content) delta.content = chunk.content
-          res.write(`data: ${JSON.stringify({ choices: [{ delta, index: 0 }] })}\n\n`)
+          this._writeSse(res, { choices: [{ delta, index: 0 }] })
         },
       }, this._chatTimeoutMs(this._budgetFloorMs(data)))
       // 流式路径同样要把"模型层失败"标出来：正文可能已经流出去一部分，不能改状态码，
       // 但必须发一条机器可判的 error 事件。
-      if (!cmdResult?.ok || cmdResult.payload?.error) {
-        const msg = cmdResult?.payload?.reply || cmdResult?.error || 'chat command failed'
+      const payload = cmdResult?.payload
+      if (!cmdResult?.ok || payload?.error) {
+        const msg = payload?.reply || cmdResult?.error || 'chat command failed'
         // 流式已发出 200 头，改不了状态码；至少把**契约拒绝**与模型故障分开，
         // 客户端据 code 判定是自己输入错还是上游挂了。
         const contract = this._isContractCode(cmdResult?.code)
         this._emitError(req, contract ? 400 : 502, msg)
-        res.write(`data: ${JSON.stringify({ error: { message: msg, type: contract ? 'invalid_request_error' : 'api_error', param: null, code: cmdResult?.code || 'model_error' } })}\n\n`)
-      } else if (cmdResult?.payload?.usage || cmdResult?.payload?.tokenUsage) {
+        this._writeSse(res, { error: { message: msg, type: contract ? 'invalid_request_error' : 'api_error', param: null, code: cmdResult?.code || 'model_error' } })
+      } else {
         // `usage` 必须走 OpenAI 的 token 形状；上下文预算是另一码事，单独用 `context` 事件发给控制台。
         // 上游没报 token 用量时**不发** usage 块，也不拿预算冒充。
-        const u = cmdResult.payload.usage
-        if (u) res.write(`data: ${JSON.stringify({ choices: [], usage: u })}\n\n`)
-        if (cmdResult.payload.tokenUsage) {
-          res.write(`data: ${JSON.stringify({ type: 'token_usage', ...cmdResult.payload.tokenUsage })}\n\n`)
-        }
+        if (payload?.usage) this._writeSse(res, { choices: [], usage: payload.usage })
+        if (payload?.tokenUsage) this._writeSse(res, { type: 'token_usage', ...payload.tokenUsage })
+        // 终态事件（R0-182）：只在 `chat.handle` 真的报了 `state` 时发 ——
+        // 正常完成逐字段保持旧版形状，旧客户端不用改。
+        if (payload?.state) this._writeSse(res, this._terminalStateEvent(payload))
       }
     } catch (err) {
       this._emitError(req, 500, err.message)
-      res.write(`data: ${JSON.stringify({ error: { message: err.message, type: 'api_error', param: null, code: 'stream_error' } })}\n\n`)
+      this._writeSse(res, { error: { message: err.message, type: 'api_error', param: null, code: 'stream_error' } })
     } finally {
       doneWithWorkspace()
     }
-    res.write('data: [DONE]\n\n')
+    this._writeSse(res, '[DONE]')
     res.end()
   }
 

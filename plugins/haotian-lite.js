@@ -40,10 +40,12 @@ class ConcurrencyLimiter {
 
 class HaotianLite {
   name = 'haotian-lite';
+  // 0.9.1（R0-182）：预算终态补 `tools_dispatched` —— 流式终态事件要用它区分
+  // "没派发过工具"与"派发过、但预算先到"，这两个事实不能靠 0 默认值猜。
   // 0.9.0（R0-180）：新增按会话的取消/预算/能力策略/无历史/观测面（`chat-control`
   // 服务 + `agent.cancel` / `agent.sessions` 能力）。`chat.handle` 的入参与返回**向后兼容**：
   // 不传新字段时行为与 0.8.x 逐字段一致。
-  version = '0.9.0';
+  version = '0.9.1';
   requires = { 'session': '>=0.3.0' };
   permissions = [];
   provides = [{ name: 'chat.handle', type: 'capability' }];
@@ -1034,6 +1036,9 @@ class HaotianLite {
       stateless: ctl?.stateless === true, record: false,
       state: 'budget_exhausted', code: 'budget_exhausted', reason,
       budget, turns: ctl?.turn ?? 0, tokens: ctl?.tokens ?? 0,
+      // 预算可能在派发过工具之后才到（max_turns / max_tokens），这个计数是消费端判断
+      // "副作用是否可能已发生"的唯一依据，不能缺省。
+      tools_dispatched: ctl?.toolsDispatched ?? 0,
     });
   }
 

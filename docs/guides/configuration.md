@@ -115,6 +115,28 @@ data: {"error":{"message":"[Error] 模型只输出了思考、没有正文（rea
 
 只看 HTTP 状态码、或只看「有没有输出」，都会把「预算被思考吃光」读成成功。
 
+### 流式终态：`tusunsun_state` 事件（R0-182）
+
+`stream:true` 时，如果这一轮不是正常完成（预算耗尽 / 被取消），网关会在 `[DONE]` **之前**多发一条事件：
+
+```
+data: {"type":"tusunsun_state","state":"budget_exhausted","code":"budget_exhausted","reason":"budget.max_tokens=10 exceeded (150 tokens reported by the model)","budget":{"kind":"max_tokens","limit":10,"used":150},"turns":1,"tokens":150,"tools_dispatched":0}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `type` | 固定 `tusunsun_state`；按它认事件，不要按正文文本猜 |
+| `state` | `budget_exhausted` / `cancelled`（未派发过任何工具）/ `unknown`（取消时已派发工具，副作用未撤销） |
+| `code` | `budget_exhausted` / `cancelled` / `cancel_unknown` |
+| `reason` | 人读的原因。**判据用 `state`/`code`**，不要解析这句话 |
+| `budget` | `{kind, limit, used}`；`wall_ms` 另有 `overrun_ms` |
+| `turns` / `tokens` / `tools_dispatched` | 这一轮的轮数、上游回报的 token 用量、已派发的工具数 |
+| `cancel_requested_at` | 取消请求的登记时间（毫秒时间戳） |
+
+约定：正常完成**不发**这条事件（形状与旧版逐字段一致）；`[DONE]` 始终是最后一条；
+事件只带状态与计数，不含 prompt、回复正文、工具入参或密钥；客户端提前断开不等于取消，
+服务端不会因此发 `cancelled`（这一轮照常收尾，统计面按 `completed` 记录）。
+
 ## 环境变量
 
 规范名统一为 `TUSUNSUN_` 前缀。历史前缀仍被接受、但只作**兼容别名**（两者同时存在时规范名赢）；按 R0-101 的纪律，文档一律只写规范名，旧前缀不在本页列出（唯一定义处是源码 `src/core/env.js`）。

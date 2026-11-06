@@ -22,7 +22,7 @@
 ## 架构
 
 - [微内核架构](architecture/microkernel.md) — 核心设计
-- [系统架构说明（0.20.3）](architecture/system-architecture.md) — 全部 50 个插件、10 个场景配方与三条端到端路径
+- [系统架构说明（0.20.4）](architecture/system-architecture.md) — 全部 50 个插件、10 个场景配方与三条端到端路径
 - [Cell RFC](architecture/cell-rfc.md) — Cell/Task/Session/Core/Process 的边界、合同、状态机与威胁模型
 
 ### 内核边界与接点

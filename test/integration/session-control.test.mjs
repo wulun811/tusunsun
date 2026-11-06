@@ -1,6 +1,8 @@
 // R0-180：多会话轻任务的**控制面** —— 按会话取消、按会话预算、按会话能力、
 // 无历史会话、按会话观测。
 //
+// R0-182：流式终态必须是**机器可判的事件**（`tusunsun_state`），不能靠解析正文文案。
+//
 // 每条都写成"两个会话同时在跑"的形状：单会话的测试证明不了"只影响目标会话"，
 // 而"一个任务卡住就杀掉整个进程"正是这张工单要修的东西。
 //
@@ -62,6 +64,18 @@ async function makeHost({ script = null, delayMs = 0, usage = null } = {}) {
       const out = step ? step.result : { content: 'DONE' };
       return { ...out, ...(usage ? { usage: { ...usage } } : {}) };
     },
+    // 流式路径（R0-182）：内容/工具调用/用量按真实分块吐，让网关的 SSE 分支拿到真形状。
+    async *streamChatTier(tier, messages) {
+      state.calls++;
+      state.seen.push(messages.map((m) => ({ role: m.role, content: m.content })));
+      const step = queue ? (queue.shift() || { content: 'DONE' }) : null;
+      const wait = step?.delayMs ?? delayMs;
+      if (wait) await sleep(wait);
+      const out = step ? step.result : { content: 'DONE' };
+      if (out?.tool_calls) { yield { tool_calls: out.tool_calls }; return; }
+      if (out?.content) yield { content: out.content };
+      if (usage) yield { usage: { ...usage } };
+    },
   });
 
   return {
@@ -79,6 +93,43 @@ async function makeHost({ script = null, delayMs = 0, usage = null } = {}) {
 }
 
 const TOOL_CALL_TURN = { content: '', tool_calls: [{ id: 'tc-1', name: 'tool-missing', arguments: '{}' }] };
+
+/** SSE 终态事件允许的字段（R0-182 的安全面：白名单，不是"随便透传"）。 */
+const TERMINAL_KEYS = new Set([
+  'type', 'state', 'code', 'reason', 'budget', 'turns', 'tokens',
+  'tools_dispatched', 'cancel_requested_at', 'request_reason',
+]);
+
+/** 把 SSE 正文切成一条条 `data:` 负载（保留 `[DONE]` 原文，顺序即协议）。 */
+const sseData = (text) => text.split('\n\n').filter(Boolean).map((b) => b.replace(/^data: /, ''));
+const jsonOrNull = (s) => { try { return JSON.parse(s); } catch { return null; } };
+
+/**
+ * 真实 HTTP 网关：流式终态必须在**传输层**验（SSE 分帧、`[DONE]` 次序、断开行为），
+ * 直接调私有方法证明不了这些。
+ */
+async function makeGatewayHost(opts) {
+  const host = await makeHost(opts);
+  const gw = Object.create((await imp('plugins/gateway.js')).default);
+  gw.handlers = new Map(); gw.clients = new Map(); gw.requestId = 0;
+  await gw.init(host.core);
+  await gw.start();
+  const base = `http://127.0.0.1:${gw.port}`;
+  const post = (body, init = {}) => fetch(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+    ...init,
+  });
+  return {
+    ...host, gw, base, post,
+    close: async () => {
+      await new Promise((resolve) => gw.httpServer.close(resolve));
+      await host.close();
+    },
+  };
+}
 
 export async function setup(runner) {
   // ── P0 取消 ─────────────────────────────────────────────────────────
@@ -401,5 +452,139 @@ export async function setup(runner) {
       await new Promise((resolve) => gw.httpServer.close(resolve));
       rmSync(d, { recursive: true, force: true });
     }
+  });
+
+  // ── R0-182/P0：流式终态（真实 SSE，按字节判）────────────────────────
+  // 四条终态各有自己的判据；正常完成必须**一个字节都不多**。
+
+  const terminalOf = (text) => sseData(text).map(jsonOrNull).find((e) => e?.type === 'tusunsun_state');
+
+  runner.test('R0-182/P0 预算：max_tokens 流式超限在 [DONE] 之前发 tusunsun_state', async () => {
+    const host = await makeGatewayHost({ usage: { inputTokens: 100, outputTokens: 50 } });
+    try {
+      const r = await host.post({
+        messages: [{ role: 'user', content: 'x' }], session_id: 'stream-tok',
+        stream: true, budget: { max_tokens: 10 },
+      });
+      assertEquals(r.status, 200);
+      const text = await r.text();
+      const data = sseData(text);
+      assertEquals(data.at(-1), '[DONE]', '`[DONE]` 仍必须是最后一条');
+      const ev = terminalOf(text);
+      assert(ev, `缺流式终态事件，尾部是：${JSON.stringify(text.slice(-300))}`);
+      assertEquals(ev.state, 'budget_exhausted');
+      assertEquals(ev.code, 'budget_exhausted');
+      assertEquals(ev.budget.kind, 'max_tokens');
+      assertEquals(ev.budget.limit, 10);
+      assertEquals(ev.budget.used, 150, 'used 必须是上游回报的真实总量（100+50），不是估算');
+      assertEquals(ev.tokens, 150);
+      assertEquals(ev.tools_dispatched, 0);
+      assert(/max_tokens=10/.test(ev.reason), `理由要点名哪一个预算，实际 ${ev.reason}`);
+      for (const k of Object.keys(ev)) assert(TERMINAL_KEYS.has(k), `终态事件不许出现白名单外字段：${k}`);
+      assert(!/BUDGET_EXHAUSTED\]/.test(JSON.stringify(ev)), '状态播报正文不得混进终态事件');
+      // 旧客户端形状不变：正文仍是 OpenAI delta 分块
+      assert(data.map(jsonOrNull).some((e) => e?.choices?.[0]?.delta?.content === 'DONE'), '正文分块必须保留');
+    } finally { await host.close(); }
+  });
+
+  runner.test('R0-182/P0 预算：wall_ms 流式超时带 budget.kind=wall_ms 与 overrun_ms', async () => {
+    const host = await makeGatewayHost({ delayMs: 45 });
+    try {
+      const r = await host.post({
+        messages: [{ role: 'user', content: 'slow' }], session_id: 'stream-wall',
+        stream: true, budget: { wall_ms: 10 },
+      });
+      assertEquals(r.status, 200);
+      const ev = terminalOf(await r.text());
+      assert(ev, 'wall_ms 超时同样要有流式终态');
+      assertEquals(ev.state, 'budget_exhausted');
+      assertEquals(ev.budget.kind, 'wall_ms');
+      assertEquals(ev.budget.limit, 10);
+      assert(ev.budget.overrun_ms >= 0, '超出量必须可读');
+      assert(/not aborted/.test(ev.reason), '必须承认在飞的那次模型调用没有被中止');
+    } finally { await host.close(); }
+  });
+
+  runner.test('R0-182/P0 取消：未派发工具 ⇒ cancelled 且 tools_dispatched=0', async () => {
+    const host = await makeGatewayHost({ delayMs: 120 });
+    try {
+      const p = host.post({
+        messages: [{ role: 'user', content: 'stop me' }], session_id: 'stream-cancel', stream: true,
+      });
+      await waitFor(() => host.ht.stat('stream-cancel')?.state === 'running');
+      host.ht.cancel('stream-cancel', { reason: 'test' });
+      const text = await (await p).text();
+      assertEquals(sseData(text).at(-1), '[DONE]', '取消也必须以 [DONE] 收尾');
+      const ev = terminalOf(text);
+      assert(ev, `取消必须在流内可见，实际尾部：${JSON.stringify(text.slice(-300))}`);
+      assertEquals(ev.state, 'cancelled');
+      assertEquals(ev.code, 'cancelled');
+      assertEquals(ev.tools_dispatched, 0);
+      assert(ev.cancel_requested_at > 0, '取消时间戳必须可读（事后对账要用）');
+    } finally { await host.close(); }
+  });
+
+  runner.test('R0-182/P0 取消：已派发工具 ⇒ unknown/cancel_unknown，不谎称已撤销', async () => {
+    const host = await makeGatewayHost({
+      script: [{ result: { content: '', tool_calls: [{ id: 'tc-1', name: 'tool-write', arguments: '{"path":"x.txt"}' }] } }],
+    });
+    try {
+      host.core.registerCapability('tool.write', {
+        owner: 'tool-write',
+        handler: async () => {
+          host.ht.cancel('stream-tool', { reason: 'during-dispatch' });
+          return { content: 'written' };
+        },
+      });
+      host.core.registerService('tools', {
+        get: (n) => (n === 'tool-write' ? { name: 'tool-write', provides: [{ name: 'tool.write' }] } : null),
+      });
+      const text = await (await host.post({
+        messages: [{ role: 'user', content: 'write' }], session_id: 'stream-tool', stream: true,
+      })).text();
+      const ev = terminalOf(text);
+      assert(ev, 'stream 分支没有把终态透出来');
+      assertEquals(ev.state, 'unknown', '派发过工具就只剩 unknown');
+      assertEquals(ev.code, 'cancel_unknown');
+      assert(ev.tools_dispatched > 0, 'tools_dispatched 必须如实计数');
+      assert(/not rolled back/.test(ev.reason), `理由要说明副作用未撤销，实际 ${ev.reason}`);
+    } finally { await host.close(); }
+  });
+
+  runner.test('R0-182/P0 正常完成：不出现 tusunsun_state，旧形状逐字段不变', async () => {
+    const host = await makeGatewayHost({ usage: { inputTokens: 3, outputTokens: 5 } });
+    try {
+      const r = await host.post({
+        messages: [{ role: 'user', content: 'hi' }], session_id: 'stream-ok', stream: true,
+      });
+      assertEquals(r.status, 200);
+      const text = await r.text();
+      const data = sseData(text);
+      assertEquals(data.at(-1), '[DONE]');
+      assert(!data.map(jsonOrNull).some((e) => e?.type === 'tusunsun_state'), '正常完成不得出现终态事件');
+      const usage = data.map(jsonOrNull).find((e) => e?.usage)?.usage;
+      assert(usage && usage.total_tokens === 8, `usage 必须仍是 OpenAI token 形状，实际 ${JSON.stringify(usage)}`);
+    } finally { await host.close(); }
+  });
+
+  runner.test('R0-182/P0 客户端提前断开：不伪造 cancelled，统计面照常收尾', async () => {
+    const host = await makeGatewayHost({ delayMs: 60 });
+    try {
+      const ac = new AbortController();
+      const res = await host.post({
+        messages: [{ role: 'user', content: 'bye' }], session_id: 'stream-abort', stream: true,
+      }, { signal: ac.signal });
+      ac.abort();
+      try { await res.body?.cancel(); } catch { /* 已断开 */ }
+      // 断开是传输层事件，不是取消请求：这一轮必须照常跑完并记为 completed。
+      await waitFor(() => {
+        const row = host.ht.stat('stream-abort');
+        return row && row.state !== 'running' ? row : null;
+      }, { timeoutMs: 5000 });
+      assertEquals(host.ht.stat('stream-abort').state, 'completed', '客户端断开不得被记成 cancelled');
+      const again = await host.post({ messages: [{ role: 'user', content: 'again' }], session_id: 'stream-after', stream: true });
+      assertEquals(again.status, 200, '一次断开不得把服务端带崩');
+      assertEquals(sseData(await again.text()).at(-1), '[DONE]');
+    } finally { await host.close(); }
   });
 }

@@ -146,12 +146,12 @@
       "history": 8
     },
     "plugins/gateway.js": {
-      "comments": 224,
-      "history": 7
+      "comments": 236,
+      "history": 11
     },
     "plugins/haotian-lite.js": {
-      "comments": 229,
-      "history": 40
+      "comments": 233,
+      "history": 41
     },
     "plugins/health.js": {
       "comments": 28,
@@ -642,6 +642,15 @@
         "plugins/haotian-lite.js comments 143 → 229",
         "plugins/tool-executor.js history 23 → 28",
         "plugins/tool-executor.js comments 776 → 817"
+      ]
+    },
+    {
+      "at": "2026-11-06T09:22:31.737Z",
+      "entries": [
+        "plugins/gateway.js history 7 → 11",
+        "plugins/gateway.js comments 224 → 236",
+        "plugins/haotian-lite.js history 40 → 41",
+        "plugins/haotian-lite.js comments 229 → 233"
       ]
     }
   ]

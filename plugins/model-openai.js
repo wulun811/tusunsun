@@ -13,7 +13,7 @@ import { readEnv } from '../src/core/env.js';
 import { isKeylessEndpoint, modelAuthHeaders } from './_lib/model-endpoint.js';
 
 // 产品身份统一：User-Agent 必须是本产品；版本字面量与 package.json 的一致性由随包门禁机械校验。
-const USER_AGENT = 'tusunsun/0.20.3';
+const USER_AGENT = 'tusunsun/0.20.4';
 
 // 工具定义有**两种**形状，本函数在一条链路上会被调用两次，必须对两种形状都幂等：
 //   · 扁平（tool-registry.list() 的产出 / 内部约定）：{ name, description, parameters }

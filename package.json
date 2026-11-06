@@ -1,6 +1,6 @@
 {
   "name": "tusunsun",
-  "version": "0.20.3",
+  "version": "0.20.4",
   "description": "土行孙 — 超轻量、插件化 AI Agent 平台微内核，核心 ≤ 4896 行",
   "license": "Apache-2.0",
   "type": "module",
